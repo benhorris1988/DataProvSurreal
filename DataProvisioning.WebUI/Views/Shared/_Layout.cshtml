@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Data Provisioning Engine</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/index.css" asp-append-version="true" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+    <nav class="navbar glass-panel">
+        <a asp-controller="Home" asp-action="Index" class="nav-brand">
+            <span>Data</span>Provisioning Engine
+        </a>
+
+        @{
+            var currentController = ViewContext.RouteData.Values["Controller"]?.ToString();
+            var currentAction = ViewContext.RouteData.Values["Action"]?.ToString();
+        }
+
+        <ul class="nav-links">
+            <li><a asp-controller="Home" asp-action="Index" class="nav-link @(currentController == "Home" ? "active" : "")">Dashboard</a></li>
+            <li><a asp-controller="Catalog" asp-action="Index" class="nav-link @(currentController == "Catalog" ? "active" : "")">Catalog</a></li>
+            <li><a asp-controller="Requests" asp-action="Index" class="nav-link @(currentController == "Requests" ? "active" : "")">My Requests</a></li>
+            
+            @if (User.IsInRole("IAO") || User.IsInRole("IAA") || User.IsInRole("Admin"))
+            {
+                <li><a asp-controller="Manage" asp-action="Index" class="nav-link @(currentController == "Manage" ? "active" : "")">Manage Access</a></li>
+                <li><a asp-controller="Admin" asp-action="Groups" class="nav-link @(currentController == "Admin" && currentAction == "Groups" ? "active" : "")">Virtual Groups</a></li>
+            }
+            @if (User.IsInRole("Admin"))
+            {
+                <li><a asp-controller="Admin" asp-action="Users" class="nav-link @(currentController == "Admin" && currentAction == "Users" ? "active" : "")">Users</a></li>
+                <li><a asp-controller="Admin" asp-action="Config" class="nav-link @(currentController == "Admin" && currentAction == "Config" ? "active" : "")" style="color: var(--accent-warning);">Admin Centre</a></li>
+            }
+        </ul>
+
+        <div class="user-selector">
+            <span>Logged in as:</span>
+            <form method="post" asp-controller="Login" asp-action="Logout" id="logoutForm" style="margin: 0;">
+                <select name="user_action" onchange="if(this.value === 'logout') document.getElementById('logoutForm').submit()" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.25rem 0.5rem; border-radius: 0.25rem;">
+                    <option selected>@User.Identity?.Name (@(User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value))</option>
+                    <option value="logout">Log Out</option>
+                </select>
+            </form>
+        </div>
+    </nav>
+
+    <div class="container animate-fade-in">
+        @RenderBody()
+    </div>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
+
