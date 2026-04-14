@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.IntegrationTests\\DataProvisioning.IntegrationTests.csproj": {}
+    "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.IntegrationTests\\DataProvisioning.IntegrationTests.csproj": {}
   },
   "projects": {
-    "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj": {
+    "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj",
+        "projectUniqueName": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj",
         "projectName": "DataProvisioning.Application",
-        "projectPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj",
+        "projectPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj",
         "packagesPath": "C:\\Users\\Ben\\.nuget\\packages\\",
-        "outputPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Application\\obj\\",
+        "outputPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Application\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -32,8 +32,8 @@
           "net8.0": {
             "targetAlias": "net8.0",
             "projectReferences": {
-              "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Domain\\DataProvisioning.Domain.csproj": {
-                "projectPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Domain\\DataProvisioning.Domain.csproj"
+              "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Domain\\DataProvisioning.Domain.csproj": {
+                "projectPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Domain\\DataProvisioning.Domain.csproj"
               }
             }
           }
@@ -70,20 +70,6 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
-          "downloadDependencies": [
-            {
-              "name": "Microsoft.AspNetCore.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            },
-            {
-              "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            }
-          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
@@ -93,14 +79,14 @@
         }
       }
     },
-    "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Domain\\DataProvisioning.Domain.csproj": {
+    "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Domain\\DataProvisioning.Domain.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Domain\\DataProvisioning.Domain.csproj",
+        "projectUniqueName": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Domain\\DataProvisioning.Domain.csproj",
         "projectName": "DataProvisioning.Domain",
-        "projectPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Domain\\DataProvisioning.Domain.csproj",
+        "projectPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Domain\\DataProvisioning.Domain.csproj",
         "packagesPath": "C:\\Users\\Ben\\.nuget\\packages\\",
-        "outputPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Domain\\obj\\",
+        "outputPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Domain\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -149,20 +135,6 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
-          "downloadDependencies": [
-            {
-              "name": "Microsoft.AspNetCore.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            },
-            {
-              "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            }
-          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
@@ -172,14 +144,14 @@
         }
       }
     },
-    "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj": {
+    "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj",
+        "projectUniqueName": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj",
         "projectName": "DataProvisioning.Infrastructure",
-        "projectPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj",
+        "projectPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj",
         "packagesPath": "C:\\Users\\Ben\\.nuget\\packages\\",
-        "outputPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\obj\\",
+        "outputPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -200,8 +172,8 @@
           "net8.0": {
             "targetAlias": "net8.0",
             "projectReferences": {
-              "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj": {
-                "projectPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj"
+              "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj": {
+                "projectPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj"
               }
             }
           }
@@ -244,20 +216,6 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
-          "downloadDependencies": [
-            {
-              "name": "Microsoft.AspNetCore.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            },
-            {
-              "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            }
-          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
@@ -267,14 +225,14 @@
         }
       }
     },
-    "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.IntegrationTests\\DataProvisioning.IntegrationTests.csproj": {
+    "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.IntegrationTests\\DataProvisioning.IntegrationTests.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.IntegrationTests\\DataProvisioning.IntegrationTests.csproj",
+        "projectUniqueName": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.IntegrationTests\\DataProvisioning.IntegrationTests.csproj",
         "projectName": "DataProvisioning.IntegrationTests",
-        "projectPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.IntegrationTests\\DataProvisioning.IntegrationTests.csproj",
+        "projectPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.IntegrationTests\\DataProvisioning.IntegrationTests.csproj",
         "packagesPath": "C:\\Users\\Ben\\.nuget\\packages\\",
-        "outputPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.IntegrationTests\\obj\\",
+        "outputPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.IntegrationTests\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -295,11 +253,11 @@
           "net8.0": {
             "targetAlias": "net8.0",
             "projectReferences": {
-              "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj": {
-                "projectPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj"
+              "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj": {
+                "projectPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj"
               },
-              "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.WebUI\\DataProvisioning.WebUI.csproj": {
-                "projectPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.WebUI\\DataProvisioning.WebUI.csproj"
+              "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.WebUI\\DataProvisioning.WebUI.csproj": {
+                "projectPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.WebUI\\DataProvisioning.WebUI.csproj"
               }
             }
           }
@@ -348,20 +306,6 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
-          "downloadDependencies": [
-            {
-              "name": "Microsoft.AspNetCore.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            },
-            {
-              "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            }
-          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
@@ -371,14 +315,14 @@
         }
       }
     },
-    "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.WebUI\\DataProvisioning.WebUI.csproj": {
+    "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.WebUI\\DataProvisioning.WebUI.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.WebUI\\DataProvisioning.WebUI.csproj",
+        "projectUniqueName": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.WebUI\\DataProvisioning.WebUI.csproj",
         "projectName": "DataProvisioning.WebUI",
-        "projectPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.WebUI\\DataProvisioning.WebUI.csproj",
+        "projectPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.WebUI\\DataProvisioning.WebUI.csproj",
         "packagesPath": "C:\\Users\\Ben\\.nuget\\packages\\",
-        "outputPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.WebUI\\obj\\",
+        "outputPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.WebUI\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -399,11 +343,11 @@
           "net8.0": {
             "targetAlias": "net8.0",
             "projectReferences": {
-              "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj": {
-                "projectPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj"
+              "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj": {
+                "projectPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Application\\DataProvisioning.Application.csproj"
               },
-              "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj": {
-                "projectPath": "C:\\convert\\data_provisioning\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj"
+              "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj": {
+                "projectPath": "C:\\development\\DataPrivNet\\DataProvisioning.Net\\DataProvisioning.Infrastructure\\DataProvisioning.Infrastructure.csproj"
               }
             }
           }
@@ -468,24 +412,6 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
-          "downloadDependencies": [
-            {
-              "name": "Microsoft.AspNetCore.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Host.win-x64",
-              "version": "[8.0.25, 8.0.25]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            },
-            {
-              "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[8.0.25, 8.0.25]"
-            }
-          ],
           "frameworkReferences": {
             "Microsoft.AspNetCore.App": {
               "privateAssets": "none"
