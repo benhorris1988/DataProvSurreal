@@ -14,11 +14,13 @@ public class AccessRequestService : IAccessRequestService
 {
     private readonly IApplicationDbContext _context;
     private readonly IDataWarehouseDbContext _dwContext;
+    private readonly ISurrealDbService _surreal;
 
-    public AccessRequestService(IApplicationDbContext context, IDataWarehouseDbContext dwContext)
+    public AccessRequestService(IApplicationDbContext context, IDataWarehouseDbContext dwContext, ISurrealDbService surreal)
     {
-        _context = context;
+        _context   = context;
         _dwContext = dwContext;
+        _surreal   = surreal;
     }
 
     public async Task<List<MyRequestDto>> GetMyRequestsAsync(int userId)
@@ -123,48 +125,78 @@ public class AccessRequestService : IAccessRequestService
             request.ReviewedAt = DateTime.UtcNow;
             request.PolicyGroupId = policyGroupId;
 
-            // --- PROVISIONING TO DATA WAREHOUSE SIMULATION ---
-            // In the original PHP (process_request.php), this executed raw SQL against a separate $pdo_dw connection
-            // to insert into AppAdmin.PermissionsMap. Let's log/simulate it here for the .NET port:
-            // 1. Get conditions from Policy Group
-            var permissions = new List<(string Col, string Val)>();
-
-            if (!policyGroupId.HasValue)
+            // Build RLS filter string from policy conditions (if a policy group was selected)
+            string? rlsFilters = null;
+            if (policyGroupId.HasValue)
             {
-                permissions.Add(("Any", "ALL"));
+                var conditions = await _context.AssetPolicyConditions
+                    .Where(c => c.PolicyGroupId == policyGroupId.Value)
+                    .ToListAsync();
+
+                if (conditions.Any())
+                {
+                    // Serialise as {"ColumnName":"Value"} — matches the format stored on has_access edges
+                    var pairs = conditions
+                        .GroupBy(c => c.ColumnName)
+                        .ToDictionary(g => g.Key, g => g.First().Value);
+                    rlsFilters = System.Text.Json.JsonSerializer.Serialize(pairs);
+                }
+            }
+
+            // 1. Create the has_access graph edge in SurrealDB
+            //    This is the source of truth for "who can access what" in the graph model.
+            await _surreal.GrantDatasetAccessAsync(
+                userId:         request.UserId,
+                datasetId:      request.DatasetId,
+                grantedByUserId: adminId,
+                rlsFilters:     rlsFilters,
+                policyGroupId:  policyGroupId);
+
+            // 2. Update PermissionsMap in SurrealDB DataWarehouse
+            //    This drives the row-level filtering enforced by SurrealDB PERMISSIONS on DW tables.
+            //    Remove existing entries for this user/dataset, then insert new ones.
+            var deleteExisting = $"""
+                DELETE PermissionsMap
+                WHERE UserID = "{request.User.Email}"
+                  AND TableName = "{request.Dataset.Name}";
+                """;
+            await _surreal.QueryAppDbAsync(deleteExisting); // runs as root against DW
+
+            if (string.IsNullOrEmpty(rlsFilters))
+            {
+                // No filter — unrestricted access to all rows
+                var insertUnrestricted = $$"""
+                    INSERT INTO PermissionsMap {
+                        UserID:          "{{request.User.Email}}",
+                        TableName:       "{{request.Dataset.Name}}",
+                        ColumnID:        NONE,
+                        AuthorizedValue: NONE,
+                        CreatedDate:     time::now()
+                    };
+                    """;
+                await _surreal.QueryAppDbAsync(insertUnrestricted);
             }
             else
             {
-                var conditions = await _context.AssetPolicyGroups // Assuming we'd add AssetPolicyConditions later if needed
-                    .Where(p => p.Id == policyGroupId.Value)
+                // Insert one PermissionsMap row per condition column
+                var conditions = await _context.AssetPolicyConditions
+                    .Where(c => c.PolicyGroupId == policyGroupId!.Value)
                     .ToListAsync();
-                    
-                // (Omitted the complex condition string splitting for brevity of this simulation, 
-                // but the integration point is here)
-            }
 
-            // Provisioning to Data Warehouse securely via EF Core
-            var existingPermissions = await _dwContext.PermissionsMap
-                .Where(p => p.UserID == request.User.Name && p.TableName == request.Dataset.Name)
-                .ToListAsync();
-
-            if (existingPermissions.Any())
-            {
-                _dwContext.PermissionsMap.RemoveRange(existingPermissions);
+                foreach (var condition in conditions)
+                {
+                    var insertFiltered = $$"""
+                        INSERT INTO PermissionsMap {
+                            UserID:          "{{request.User.Email}}",
+                            TableName:       "{{request.Dataset.Name}}",
+                            ColumnID:        "{{condition.ColumnName}}",
+                            AuthorizedValue: "{{condition.Value}}",
+                            CreatedDate:     time::now()
+                        };
+                        """;
+                    await _surreal.QueryAppDbAsync(insertFiltered);
+                }
             }
-
-            foreach(var p in permissions)
-            {
-                _dwContext.PermissionsMap.Add(new DataProvisioning.Domain.Entities.PermissionMap 
-                { 
-                    UserID = request.User.Name, 
-                    TableName = request.Dataset.Name, 
-                    ColumnID = p.Col, 
-                    AuthorizedValue = p.Val 
-                });
-            }
-            
-            await _dwContext.SaveChangesAsync();
         }
         else if (action == "reject")
         {
