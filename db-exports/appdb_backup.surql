@@ -5,6 +5,12 @@
 OPTION IMPORT;
 
 -- ------------------------------
+-- ACCESSES
+-- ------------------------------
+
+DEFINE ACCESS user_token ON DATABASE TYPE RECORD SIGNIN (SELECT * FROM users WHERE email = $email) WITH JWT ALGORITHM HS512 KEY '[REDACTED]' WITH ISSUER KEY '[REDACTED]' DURATION FOR TOKEN 1h, FOR SESSION 1w;
+
+-- ------------------------------
 -- TABLE: access_requests
 -- ------------------------------
 
@@ -35,7 +41,7 @@ INSERT [ { created_at: d'2026-01-27T17:35:47.420Z', dataset_id: datasets:1, id: 
 -- TABLE: asset_policy_columns
 -- ------------------------------
 
-DEFINE TABLE asset_policy_columns TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE asset_policy_columns TYPE NORMAL SCHEMAFULL PERMISSIONS FOR select WHERE $auth.role INSIDE ['Admin', 'IAO', 'IAA'], FOR create, update WHERE $auth.role INSIDE ['Admin', 'IAO'], FOR delete WHERE $auth.role = 'Admin';
 
 DEFINE FIELD column_name ON asset_policy_columns TYPE string PERMISSIONS FULL;
 DEFINE FIELD is_hidden ON asset_policy_columns TYPE bool PERMISSIONS FULL;
@@ -52,7 +58,7 @@ DEFINE FIELD policy_group_id ON asset_policy_columns TYPE record<asset_policy_gr
 -- TABLE: asset_policy_conditions
 -- ------------------------------
 
-DEFINE TABLE asset_policy_conditions TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE asset_policy_conditions TYPE NORMAL SCHEMAFULL PERMISSIONS FOR select WHERE $auth.role INSIDE ['Admin', 'IAO', 'IAA'], FOR create, update WHERE $auth.role INSIDE ['Admin', 'IAO'], FOR delete WHERE $auth.role = 'Admin';
 
 DEFINE FIELD column_name ON asset_policy_conditions TYPE string PERMISSIONS FULL;
 DEFINE FIELD operator ON asset_policy_conditions TYPE string PERMISSIONS FULL;
@@ -70,7 +76,7 @@ DEFINE FIELD `value` ON asset_policy_conditions TYPE string PERMISSIONS FULL;
 -- TABLE: asset_policy_groups
 -- ------------------------------
 
-DEFINE TABLE asset_policy_groups TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE asset_policy_groups TYPE NORMAL SCHEMAFULL PERMISSIONS FOR select WHERE $auth.role INSIDE ['Admin', 'IAO', 'IAA'], FOR create WHERE $auth.role INSIDE ['Admin', 'IAO'], FOR update WHERE $auth.id = owner_id OR $auth.role = 'Admin', FOR delete WHERE $auth.role = 'Admin';
 
 DEFINE FIELD created_at ON asset_policy_groups TYPE datetime PERMISSIONS FULL;
 DEFINE FIELD dataset_id ON asset_policy_groups TYPE record<datasets> PERMISSIONS FULL;
@@ -90,7 +96,7 @@ DEFINE INDEX apg_dataset ON asset_policy_groups FIELDS dataset_id;
 -- TABLE: columns
 -- ------------------------------
 
-DEFINE TABLE columns TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE columns TYPE NORMAL SCHEMAFULL PERMISSIONS FOR select WHERE $auth != NONE, FOR create, update WHERE $auth.role INSIDE ['Admin', 'IAO'], FOR delete WHERE $auth.role = 'Admin';
 
 DEFINE FIELD data_type ON columns TYPE none | string PERMISSIONS FULL;
 DEFINE FIELD dataset_id ON columns TYPE record<datasets> PERMISSIONS FULL;
@@ -112,7 +118,7 @@ INSERT [ { data_type: 'INT', dataset_id: datasets:1, definition: 'Unique identif
 -- TABLE: datasets
 -- ------------------------------
 
-DEFINE TABLE datasets TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE datasets TYPE NORMAL SCHEMAFULL PERMISSIONS FOR select WHERE $auth != NONE, FOR create, update WHERE $auth.role INSIDE ['Admin', 'IAO'], FOR delete WHERE $auth.role = 'Admin';
 
 DEFINE FIELD created_at ON datasets TYPE datetime PERMISSIONS FULL;
 DEFINE FIELD description ON datasets TYPE none | string PERMISSIONS FULL;
@@ -129,10 +135,49 @@ DEFINE FIELD type ON datasets TYPE string PERMISSIONS FULL;
 INSERT [ { created_at: d'2026-01-27T17:16:54.743Z', description: 'Consolidated sales transactions across all sectors.', id: datasets:1, name: 'FactSales', owner_group_id: virtual_groups:1, type: 'Fact' }, { created_at: d'2026-01-27T17:16:54.743Z', description: 'Monthly payroll data.', id: datasets:3, name: 'FactPayroll', owner_group_id: virtual_groups:2, type: 'Fact' }, { created_at: d'2026-02-17T12:14:59.697Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:4, name: 'stg_ACCOUNTING_JOURNAL_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.837Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:5, name: 'stg_ACCOUNT_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.843Z', description: 'Sales parts', id: datasets:6, name: 'dim_SalesPart', type: 'Dimension' }, { created_at: d'2026-02-17T12:14:59.850Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:7, name: 'stg_INVENTORY_TRANSACTION_HIST_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.860Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:8, name: 'stg_PURCHASE_ORDER_LINE_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.870Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:9, name: 'stg_SALES_QUOTATION_LINE_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.873Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:10, name: 'stg_SALES_QUOTATION_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.880Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:11, name: 'stg_COMPANY_POSITION_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.887Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:12, name: 'stg_DOC_TITLE_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.890Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:13, name: 'stg_DOC_ISSUE_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.897Z', description: 'Land Customer dimension', id: datasets:14, name: 'DimCustomer', owner_group_id: virtual_groups:3, type: 'Dimension' }, { created_at: d'2026-02-17T12:14:59.907Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:15, name: 'stg_EMP_SALARY_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.917Z', description: 'All the materials', id: datasets:16, name: 'dim_Part', type: 'Dimension' }, { created_at: d'2026-02-17T12:14:59.927Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:17, name: 'stg_INVENTORY_LOCATION_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.937Z', description: 'Orders dim', id: datasets:18, name: 'dim_Order', owner_group_id: virtual_groups:1, type: 'Dimension' }, { created_at: d'2026-02-17T12:14:59.943Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:19, name: 'stg_NCR_REPORT_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.950Z', description: 'All our customers orders', id: datasets:20, name: 'fact_CustomerOrders', type: 'Fact' }, { created_at: d'2026-02-17T12:14:59.957Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:21, name: 'stg_PM_ACTION_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.963Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:22, name: 'stg_INVOICE_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.973Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:23, name: 'stg_PURCHASE_BUYER_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.977Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:24, name: 'stg_PURCHASE_REQ_LINE_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.983Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:25, name: 'stg_PURCHASE_PART_SUPPLIER_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.990Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:26, name: 'stg_QUALITY_AUDIT_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:14:59.997Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:27, name: 'stg_PURCHASE_REQUISITION_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.003Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:28, name: 'stg_WAREHOUSE_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.007Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:29, name: 'stg_ACTIVE_WORK_ORDER_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.010Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:30, name: 'stg_CUSTOMER_ORDER_LINE_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.017Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:31, name: 'stg_CUSTOMER_ORDER_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.020Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:32, name: 'stg_GEN_LED_VOUCHER_ROW_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.027Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:33, name: 'stg_PURCHASE_ORDER_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.030Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:34, name: 'stg_SHOP_ORD_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.033Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:35, name: 'stg_ACCOUNTING_CODE_PART_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.037Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:36, name: 'stg_ACTIVITY_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.040Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:37, name: 'stg_COMPANY_EMP_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.040Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:38, name: 'stg_CUST_ORD_CUSTOMER_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.043Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:39, name: 'stg_EQUIPMENT_OBJECT_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.047Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:40, name: 'stg_INVENTORY_PART_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.050Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:41, name: 'stg_PROJECT_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.050Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:42, name: 'stg_SUPPLIER_INFO_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:15:00.053Z', description: 'Imported from Data Warehouse. Please update description.', id: datasets:43, name: 'stg_WORK_CENTER_TAB', type: 'Staging' }, { created_at: d'2026-02-17T12:53:59.930Z', description: 'Stock in the warehouse', id: datasets:44, name: 'FactInventory', type: 'Fact' }, { created_at: d'2026-02-17T17:08:08.607Z', description: 'Customer dimension', id: datasets:45, name: 'dim_Customer', owner_group_id: virtual_groups:1, type: 'Dimension' } ];
 
 -- ------------------------------
+-- TABLE: governed_by
+-- ------------------------------
+
+DEFINE TABLE governed_by TYPE RELATION IN datasets OUT asset_policy_groups SCHEMAFULL PERMISSIONS FOR select WHERE $auth != NONE, FOR create, update WHERE $auth.role INSIDE ['Admin', 'IAO'], FOR delete WHERE $auth.role = 'Admin';
+
+DEFINE FIELD in ON governed_by TYPE record<datasets> PERMISSIONS FULL;
+DEFINE FIELD out ON governed_by TYPE record<asset_policy_groups> PERMISSIONS FULL;
+
+DEFINE INDEX governed_by_unique ON governed_by FIELDS in, out UNIQUE;
+
+
+-- ------------------------------
+-- TABLE DATA: governed_by
+-- ------------------------------
+
+
+-- ------------------------------
+-- TABLE: has_access
+-- ------------------------------
+
+DEFINE TABLE has_access TYPE RELATION IN users OUT datasets SCHEMAFULL PERMISSIONS FOR select WHERE $auth.id = in OR $auth.role INSIDE ['Admin', 'IAO', 'IAA'], FOR create, update WHERE $auth.role INSIDE ['Admin', 'IAO', 'IAA'], FOR delete WHERE $auth.role = 'Admin';
+
+DEFINE FIELD granted_at ON has_access TYPE datetime DEFAULT time::now() PERMISSIONS FULL;
+DEFINE FIELD granted_by ON has_access TYPE none | record<users> PERMISSIONS FULL;
+DEFINE FIELD in ON has_access TYPE record<users> PERMISSIONS FULL;
+DEFINE FIELD out ON has_access TYPE record<datasets> PERMISSIONS FULL;
+DEFINE FIELD policy_group_id ON has_access TYPE none | record<asset_policy_groups> PERMISSIONS FULL;
+DEFINE FIELD rls_filters ON has_access TYPE none | string PERMISSIONS FULL;
+
+DEFINE INDEX has_access_unique ON has_access FIELDS in, out UNIQUE;
+
+
+-- ------------------------------
+-- TABLE DATA: has_access
+-- ------------------------------
+
+INSERT RELATION [ { granted_at: d'2026-04-15T07:58:12.170536900Z', granted_by: users:2, id: has_access:a0449mjktor731c8mep5, in: users:3, out: datasets:1, rls_filters: '[]' }, { granted_at: d'2026-04-15T07:58:24.629262600Z', granted_by: users:3, id: has_access:ele1uf12gsf8rtgy831r, in: users:4, out: datasets:14 }, { granted_at: d'2026-04-15T07:58:14.277951300Z', granted_by: users:2, id: has_access:kkdcp9kik9wvz5nhfmw3, in: users:2, out: datasets:1, rls_filters: '{"Sector":"Marine"}' }, { granted_at: d'2026-04-15T07:58:20.493986100Z', granted_by: users:5, id: has_access:rjkwqmslnboiathru0vr, in: users:5, out: datasets:18 }, { granted_at: d'2026-04-15T07:58:18.428983700Z', granted_by: users:3, id: has_access:wv7ng6mt25mk7e1cnump, in: users:1, out: datasets:14 }, { granted_at: d'2026-04-15T07:58:16.348601300Z', granted_by: users:2, id: has_access:zrhlzaztbx5chmhysg6p, in: users:2, out: datasets:3 } ];
+
+-- ------------------------------
 -- TABLE: initial_admins
 -- ------------------------------
 
-DEFINE TABLE initial_admins TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE initial_admins TYPE NORMAL SCHEMAFULL PERMISSIONS FOR select, create, update, delete WHERE $auth.role = 'Admin';
 
 DEFINE FIELD added_at ON initial_admins TYPE none | datetime PERMISSIONS FULL;
 DEFINE FIELD username ON initial_admins TYPE string PERMISSIONS FULL;
@@ -145,10 +190,29 @@ DEFINE FIELD username ON initial_admins TYPE string PERMISSIONS FULL;
 
 
 -- ------------------------------
+-- TABLE: member_of
+-- ------------------------------
+
+DEFINE TABLE member_of TYPE RELATION IN users OUT virtual_groups SCHEMAFULL PERMISSIONS FOR select WHERE $auth != NONE, FOR create, delete WHERE $auth.role = 'Admin' OR (SELECT 1 FROM virtual_groups WHERE id = $parent.out AND owner_id = $auth.id LIMIT 1).len() > 0, FOR update NONE;
+
+DEFINE FIELD added_at ON member_of TYPE datetime DEFAULT time::now() PERMISSIONS FULL;
+DEFINE FIELD in ON member_of TYPE record<users> PERMISSIONS FULL;
+DEFINE FIELD out ON member_of TYPE record<virtual_groups> PERMISSIONS FULL;
+
+DEFINE INDEX member_of_unique ON member_of FIELDS in, out UNIQUE;
+
+
+-- ------------------------------
+-- TABLE DATA: member_of
+-- ------------------------------
+
+INSERT RELATION [ { added_at: d'2026-04-15T07:58:05.978849200Z', id: member_of:ezy3kckj3y5cgjlz6wg2, in: users:3, out: virtual_groups:3 }, { added_at: d'2026-04-15T07:58:03.886486200Z', id: member_of:poupuh41vqr51hevamvh, in: users:4, out: virtual_groups:1 }, { added_at: d'2026-04-15T07:58:08.035846400Z', id: member_of:stzrgtpreuiknqqezyrt, in: users:4, out: virtual_groups:3 } ];
+
+-- ------------------------------
 -- TABLE: report_datasets
 -- ------------------------------
 
-DEFINE TABLE report_datasets TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE report_datasets TYPE NORMAL SCHEMAFULL PERMISSIONS FOR select WHERE $auth != NONE, FOR create, update WHERE $auth.role INSIDE ['Admin', 'IAO'], FOR delete WHERE $auth.role = 'Admin';
 
 DEFINE FIELD dataset_id ON report_datasets TYPE record<datasets> PERMISSIONS FULL;
 DEFINE FIELD report_id ON report_datasets TYPE record<reports> PERMISSIONS FULL;
@@ -164,7 +228,7 @@ DEFINE FIELD report_id ON report_datasets TYPE record<reports> PERMISSIONS FULL;
 -- TABLE: reports
 -- ------------------------------
 
-DEFINE TABLE reports TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE reports TYPE NORMAL SCHEMAFULL PERMISSIONS FOR select WHERE $auth != NONE, FOR create, update WHERE $auth.role INSIDE ['Admin', 'IAO'], FOR delete WHERE $auth.role = 'Admin';
 
 DEFINE FIELD description ON reports TYPE none | string PERMISSIONS FULL;
 DEFINE FIELD name ON reports TYPE string PERMISSIONS FULL;
@@ -202,7 +266,7 @@ INSERT [ { created_at: d'2026-01-27T17:16:54.733Z', email: 'john@example.com', i
 -- TABLE: virtual_group_members
 -- ------------------------------
 
-DEFINE TABLE virtual_group_members TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE virtual_group_members TYPE NORMAL SCHEMAFULL PERMISSIONS FOR select WHERE $auth != NONE, FOR create, delete WHERE $auth.role = 'Admin' OR (SELECT 1 FROM virtual_groups WHERE id = $parent.group_id AND owner_id = $auth.id LIMIT 1).len() > 0, FOR update NONE;
 
 DEFINE FIELD added_at ON virtual_group_members TYPE datetime PERMISSIONS FULL;
 DEFINE FIELD group_id ON virtual_group_members TYPE record<virtual_groups> PERMISSIONS FULL;
@@ -222,7 +286,7 @@ INSERT [ { added_at: d'2026-02-17T20:02:21.980Z', group_id: virtual_groups:1, id
 -- TABLE: virtual_groups
 -- ------------------------------
 
-DEFINE TABLE virtual_groups TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE TABLE virtual_groups TYPE NORMAL SCHEMAFULL PERMISSIONS FOR select, create WHERE $auth != NONE, FOR update WHERE $auth.id = owner_id OR $auth.role = 'Admin', FOR delete WHERE $auth.role = 'Admin';
 
 DEFINE FIELD created_at ON virtual_groups TYPE datetime PERMISSIONS FULL;
 DEFINE FIELD description ON virtual_groups TYPE none | string PERMISSIONS FULL;
