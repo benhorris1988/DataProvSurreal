@@ -109,9 +109,9 @@
                     </linearGradient>
                 </defs>
 
-                <line x1="0" y1="200" x2="1000" y2="200" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
-                <line x1="0" y1="100" x2="1000" y2="100" stroke="rgba(255,255,255,0.05)" stroke-width="1" stroke-dasharray="5,5" />
-                <line x1="0" y1="0" x2="1000" y2="0" stroke="rgba(255,255,255,0.05)" stroke-width="1" stroke-dasharray="5,5" />
+                <line x1="0" y1="200" x2="1000" y2="200" stroke="var(--border-color)" stroke-width="1" />
+                <line x1="0" y1="100" x2="1000" y2="100" stroke="var(--border-color)" stroke-width="1" stroke-dasharray="5,5" />
+                <line x1="0" y1="0" x2="1000" y2="0" stroke="var(--border-color)" stroke-width="1" stroke-dasharray="5,5" />
 
                 <polyline points="@Model.ActivitySvgPoints" fill="none" stroke="var(--accent-primary)" stroke-width="3"
                     vector-effect="non-scaling-stroke" stroke-linejoin="round" class="line-anim" />
@@ -157,7 +157,7 @@
                 position: relative;
                 margin-bottom: 1rem;
             ">
-                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 70%; background: #13151a; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem;">
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 70%; background: var(--bg-card); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem;">
                     @Model.Inventory.Total
                 </div>
             </div>
@@ -199,7 +199,7 @@
                 position: relative;
                 margin-bottom: 1rem;
             ">
-                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 70%; background: #13151a; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem;">
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 70%; background: var(--bg-card); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem;">
                     @Model.Outcome.Total
                 </div>
             </div>
@@ -241,8 +241,8 @@
                             <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;" title="@td.Name">@td.Name</span>
                             <span style="color: var(--text-secondary);">@td.RequestCount</span>
                         </div>
-                        <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
-                            <div style="width: @(td.Percentage.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; height: 100%; background: var(--accent-secondary); border-radius: 3px;"></div>
+                        <div style="width: 100%; height: 6px; background: var(--border-color); border-radius: 3px; overflow: hidden;">
+                            <div style="width: @(td.Percentage.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%; height: 100%; background: var(--text-primary); border-radius: 3px;"></div>
                         </div>
                     </div>
                 }
@@ -262,7 +262,7 @@
             <ul style="list-style: none; padding: 0;">
                 @foreach (var ra in Model.MyRecentAccess)
                 {
-                    <li style="padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+                    <li style="padding: 0.75rem 0; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
                         <div style="min-width: 0; flex: 1;">
                             <a asp-controller="Dataset" asp-action="Details" asp-route-id="@ra.Id"
                                 style="color: var(--text-primary); text-decoration: none; font-weight: 500; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
@@ -292,7 +292,7 @@
             <ul style="list-style: none; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
                 @foreach (var ds in Model.NewToCatalog)
                 {
-                    <li style="padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+                    <li style="padding: 0.75rem 0; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
                         <div style="min-width: 0; flex: 1;">
                             <a asp-controller="Dataset" asp-action="Details" asp-route-id="@ds.Id"
                                 style="color: var(--text-primary); text-decoration: none; font-weight: 500; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"

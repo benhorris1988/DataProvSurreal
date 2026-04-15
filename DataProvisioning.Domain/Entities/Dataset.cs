@@ -5,11 +5,11 @@ namespace DataProvisioning.Domain.Entities;
 
 public class Dataset
 {
-    public int Id { get; set; }
+    public string Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public DatasetType Type { get; set; } = DatasetType.Fact;
     public string? Description { get; set; }
-    public int? OwnerGroupId { get; set; }
+    public string? OwnerGroupId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public VirtualGroup? OwnerGroup { get; set; }

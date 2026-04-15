@@ -1,83 +1,258 @@
-# Data Provisioning Engine
+# SurrealDB Migration - Complete Guide
 
-The **Data Provisioning Engine** is a comprehensive .NET 8 ASP.NET Core MVC web application designed to manage and orchestrate user access requests to organizational databases and datasets. 
+## Overview
 
-Originally ported from a legacy PHP architecture, this modernized application enforces Clean Architecture principles, strict separation of concerns, and enterprise-grade identity integration.
+You are migrating from SQL Server to SurrealDB while implementing row-level access control based on the Data Provisioning Engine.
 
-## Key Features
+**Source Databases:**
+- `datamarketplace` (Application DB) - 6 users, 44 datasets, 13 access requests
+- `DataWarehouse_DEV` (Operational DW) - 43 tables with fact, dimension, and staging data
 
-- **Dataset Catalog:** Browse available data assets, view metadata (Fact/Dimension/Staging), and request granular access.
-- **Request Workflows:** Automated request tracking. Users can request access, while Information Asset Owners (IAO) and Approvers (IAA) can review, approve, or reject dataset access natively.
-- **Enterprise Authentication:**
-  - **Windows Authentication:** Seamless, zero-touch sign-on using Windows Active Directory credentials.
-  - **Test/Impersonation Mode:** A configurable `TestMode` that swaps Windows Auth out for a simple dropdown-based Cookie authentication system, allowing developers to easily test workflows across different roles.
-  - **Automatic User Provisioning:** As new AD users access the site, their accounts are automatically provisioned in the application. Specific domain accounts can be pre-configured as `InitialAdmins` to automatically grant them the Admin role on first login.
-- **Security & Service Accounts:** The application can seamlessly impersonate backend Windows AD Service Accounts to interact with external databases securely (managed via Integrated Security), ensuring end-user credentials never touch the database.
-- **Role-Based Access Control (RBAC):** Built-in support for multiple organizational roles (`Admin`, `IAO`, `IAA`, `User`), seamlessly integratable with Microsoft Entra ID (Azure AD).
-- **Virtual Groups & Policies:** Enforce row-level security or specific slice access by mapping datasets to Virtual Groups and Access Policies.
-- **KPI Dashboard:** A dynamic, beautiful dashboard tracking real-time metrics including "My Active Assets", "Pending Requests", 30-day activity trends, and dataset composition analytics.
-- **Admin Control Centre:** Administrators can dynamically update underlying database connection strings, toggle Windows Authentication for backend services, verify current executing Service Accounts, and manage identity provider settings without touching the codebase.
+**Target SurrealDB Structure:**
+- **Namespace**: `DataProvisioningEngine`
+- **Database 1**: `AppDB` - Application metadata and access control
+- **Database 2**: `DataWarehouse` - Operational data warehouse
 
-## Application Architecture
+---
 
-The solution implements a strict Clean Architecture pattern divided into four primary layers:
+## Migration Steps
 
-1. **`DataProvisioning.Domain` (Core)**
-   - Contains all enterprise logic, base Entities (e.g., `Dataset`, `AccessRequest`, `InitialAdmin`, `VirtualGroup`), Enums, and custom Exceptions.
-   - **No dependencies.** The safest, most isolated layer of the application.
+### Step 1: Set Up SurrealDB Namespace and Databases
 
-2. **`DataProvisioning.Application` (Use Cases)**
-   - Houses the business rules, Services (`CatalogService`, `AccessRequestService`), Interfaces, Data Transfer Objects (DTOs), and ViewModels.
-   - Only depends on the `Domain` layer.
+**File:** `04_complete_schema_setup.sql`
 
-3. **`DataProvisioning.Infrastructure` (Data & External)**
-   - Connects to external systems. Contains the Entity Framework Core `ApplicationDbContext` mapped directly to SQL Server 2022.
-   - Handles interactions with identity services or external APIs.
-   - Depends on the `Application` layer to fullfil its defined interfaces.
+Execute this by connecting to SurrealDB:
 
-4. **`DataProvisioning.WebUI` (Presentation)**
-   - The ASP.NET Core MVC application providing the user interface.
-   - Utilizes custom "Babcock" CSS styling built over Bootstrap grids, ensuring a responsive, glassmorphism-inspired dark theme.
-   - Configures Dependency Injection (DI) and coordinates HTTP requests (including the `UserProvisioningMiddleware`).
+```bash
+# Start SurrealDB (if not running)
+surreal start file://./surreal.db
 
-5. **`DataProvisioning.UnitTests` & `DataProvisioning.IntegrationTests`**
-   - xUnit based test projects to secure the application logic and ensure data adapters function correctly against the database context.
+# Connect to SurrealDB CLI
+surreal sql --conn http://localhost:8000 --user root --pass root
+```
 
-## Technology Stack
+Then paste the entire contents of `04_complete_schema_setup.sql` into the SurrealDB CLI.
 
-- **Framework:** .NET 8.0 SDK
-- **Web App:** ASP.NET Core MVC
-- **Data Access:** Entity Framework Core 8.0 (EF Core)
-- **Database Target:** Microsoft SQL Server 2022
-- **Frontend Stack:** HTML5, standard CSS3 (Flexbox/Grid), JavaScript, jQuery 3.x, Bootstrap 5 (Grids/Utilities).
+This will:
+- Create namespace `DataProvisioningEngine`
+- Create databases `AppDB` and `DataWarehouse`
+- Create all tables with relationships
+- Set up indexes for performance
+- Configure permissions for access control
 
-## Getting Started for Developers
+### Step 2: Verify Data Export
 
-### Prerequisites
-- Install the **.NET 8.0 SDK** (Windows x64).
-- A local instance of SQL Server 2022 or SQL Server Express.
+All data has been exported to CSV files:
+- `appdb_users.csv` (6 users)
+- `appdb_virtual_groups.csv` (8 groups)
+- `appdb_datasets.csv` (44 datasets)
+- `appdb_columns.csv` (dataset columns)
+- `appdb_asset_policy_groups.csv` (policy groups)
+- `appdb_asset_policy_columns.csv` (hidden columns)
+- `appdb_asset_policy_conditions.csv` (RLS conditions)
+- `appdb_virtual_group_members.csv` (group memberships)
+- `appdb_access_requests.csv` (13 access requests)
+- `appdb_initial_admins.csv` (admin users)
 
-### Setup Instructions
+### Step 3: Import Data into SurrealDB
 
-1. **Open the Project:**
-   Open the folder or `DataProvisioning.slnx` (or `.sln`) in Visual Studio 2022 or VS Code.
+**Option A: Using Python (Recommended)**
 
-2. **Run Database Migrations:**
-   Ensure your local database schema is up to date by running the Entity Framework Core migrations. Open a terminal, navigate to the WebUI project, and run:
-   ```powershell
-   cd DataProvisioning.WebUI
-   dotnet ef database update --project ../DataProvisioning.Infrastructure --startup-project .
-   ```
+```bash
+# Install required package
+pip install requests
 
-3. **Configure Settings:**
-   - In `appsettings.json`, you can toggle `"TestMode": true` to use the dropdown-based login for easy local development, or `false` to test pure Windows Authentication.
-   - You can define a master admin via `"InitialAdmin": "DOMAIN\\username"` in the settings, or statically insert them into the `initial_admins` SQL table.
+# Run the import script
+python import_data.py
+```
 
-4. **Run Locally:**
-   Set `DataProvisioning.WebUI` as the Startup Project and press `F5` in Visual Studio, or run `dotnet run` from the terminal. 
-   
-5. **Admin Centre Configuration:**
-   Once running, log in as an Administrator and navigate to **Administration -> Admin Centre**. From here you can configure:
-   - Target Application SQL Server connection strings.
-   - Target Data Warehouse (Scanning Target) database.
-   - Toggle "Use Windows Auth" to use the executing Service Account instead of explicit SQL credentials.
+**Option B: Manual Import via CLI**
+
+In the SurrealDB CLI:
+```
+USE NAMESPACE `DataProvisioningEngine`;
+USE DATABASE `AppDB`;
+
+-- Then import each CSV by reading and inserting
+-- This is more manual but gives you control
+```
+
+### Step 4: Verify Data Import
+
+In SurrealDB CLI, verify the imports:
+
+```surqljs
+USE NAMESPACE `DataProvisioningEngine` DATABASE `AppDB`;
+
+SELECT count(*) FROM users;
+SELECT count(*) FROM datasets;
+SELECT count(*) FROM access_requests;
+```
+
+Expected results:
+- Users: 6
+- Datasets: 44
+- Access Requests: 13
+
+### Step 5: Update Application Configuration
+
+Edit `DataProvisioning.WebUI/appsettings.json`:
+
+```json
+{
+  "ConnectionStrings": {
+    "SurrealDB": "http://localhost:8000",
+    "SurrealDBNamespace": "DataProvisioningEngine",
+    "SurrealDBDatabase": "AppDB",
+    "SurrealDBUser": "root",
+    "SurrealDBPassword": "root"
+  },
+  "DatabaseProvider": "SurrealDB"
+}
+```
+
+### Step 6: Update Data Access Layer
+
+Create new data access classes for SurrealDB:
+
+```csharp
+// In DataProvisioning.Infrastructure/Data/
+// Create SurrealDbContext.cs
+// Create repositories for SurrealDB access
+```
+
+Key implementation points:
+- Replace Entity Framework Core with SurrealDB client library
+- Implement query builder for row-level filters
+- Apply access control based on `access_requests` table
+- Filter columns based on `asset_policy_columns.is_hidden`
+
+### Step 7: Implement Row-Level Access Control
+
+When a user logs in and requests data:
+
+1. **Identify User**: Get user ID from authentication
+2. **Get Approved Datasets**: Query `access_requests` WHERE user_id = $user_id AND status = 'Approved'
+3. **Get Access Policies**: Get `asset_policy_groups` linked to those datasets
+4. **Build Row Filter**: Construct WHERE clause from `asset_policy_conditions`
+5. **Hide Columns**: Filter columns where `asset_policy_columns.is_hidden = true`
+6. **Execute Query**: Query the data with filters applied
+
+Example pseudocode:
+```csharp
+// Get approved datasets for user
+var approvedDatasets = await db.Query(
+    $"SELECT dataset FROM access_requests WHERE user_id = {userId} AND status = 'Approved'"
+);
+
+// For each dataset, get policy conditions
+foreach (var dataset in approvedDatasets) {
+    var policy = await db.Query(
+        $"SELECT * FROM asset_policy_groups WHERE dataset_id = {dataset.id}"
+    );
+    
+    // Build row filter SQL
+    var conditions = await db.Query(
+        $"SELECT * FROM asset_policy_conditions WHERE policy_group_id = {policy.id}"
+    );
+    
+    // Build query with RLS applied
+    var rqlQuery = BuildQueryWithRLS(dataset, conditions);
+    var data = await ExecuteQuery(rqlQuery);
+}
+```
+
+### Step 8: Test the Integration
+
+1. Log in as different users
+2. Verify each user sees only their approved datasets
+3. Verify row-level filters are applied correctly
+4. Verify hidden columns are not displayed
+5. Test access request workflow
+
+---
+
+## Troubleshooting
+
+### Issue: "Cannot connect to SurrealDB"
+- **Solution**: Ensure SurrealDB is running: `surreal start`
+
+### Issue: "Namespace already exists"
+- **Solution**: This is fine, SurrealDB will use the existing namespace
+
+### Issue: "Table not found" during import
+- **Solution**: Verify Step 1 (schema setup) completed successfully
+
+### Issue: Data import is slow
+- **Solution**: Use batch imports (multiple INSERT values in one query)
+
+---
+
+## Data Migration Checklist
+
+- [ ] Back up SQL Server databases
+- [ ] Start SurrealDB server
+- [ ] Execute `04_complete_schema_setup.sql` in SurrealDB CLI
+- [ ] Verify tables created: SELECT * FROM sys.tables;
+- [ ] Import CSV data using Python script or manual CLI
+- [ ] Verify record counts match
+- [ ] Update `appsettings.json`
+- [ ] Create new data access classes for SurrealDB
+- [ ] Implement row-level access control
+- [ ] Test with multiple users
+- [ ] Verify all features work as expected
+- [ ] Perform security audit
+- [ ] Set up monitoring and logging
+- [ ] Deploy to production
+
+---
+
+## Performance Considerations
+
+1. **Indexes**: Schema already includes indexes on foreign keys
+2. **Batch Imports**: Use batch INSERT for faster data loading
+3. **Caching**: Implement caching for frequently accessed policies
+4. **Query Optimization**: Use SurrealDB's query planner analysis
+
+---
+
+## Security Notes
+
+1. **Row-Level Security**: Implemented via `access_requests` filtering
+2. **Column-Level Security**: Implemented via `asset_policy_columns.is_hidden`
+3. **Authentication**: Integration with Windows AD/Test Mode preserved
+4. **Permissions**: SurrealDB table permissions configured in schema
+
+---
+
+## Next Steps After Migration
+
+1. **Refactor Application Code**
+   - Replace EF Core with SurrealDB SDK
+   - Update all CRUD operations
+   - Test thoroughly
+
+2. **Implement Data Warehouse Queries**
+   - Connect to `DataWarehouse` database
+   - Apply same access control model
+   - Query facts and dimensions
+
+3. **Set Up Monitoring**
+   - Log all access requests
+   - Monitor performance
+   - Alert on anomalies
+
+4. **Complete Testing**
+   - Unit tests for access control
+   - Integration tests for data access
+   - Security penetration testing
+
+---
+
+## Support
+
+For issues or questions:
+1. Check SurrealDB documentation: https://docs.surrealdb.com/
+2. Review migration files in this directory
+3. Check application logs for errors
+

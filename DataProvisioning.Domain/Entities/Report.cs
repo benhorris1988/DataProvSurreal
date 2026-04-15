@@ -3,7 +3,7 @@ namespace DataProvisioning.Domain.Entities;
 
 public class Report
 {
-    public int Id { get; set; }
+    public string Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Url { get; set; }
     public string? Description { get; set; }
