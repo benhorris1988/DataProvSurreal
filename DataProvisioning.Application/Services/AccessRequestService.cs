@@ -2,42 +2,43 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
 using DataProvisioning.Application.DTOs;
 using DataProvisioning.Application.Interfaces;
-using DataProvisioning.Domain.Entities;
-using DataProvisioning.Domain.Enums;
 
 namespace DataProvisioning.Application.Services;
 
 public class AccessRequestService : IAccessRequestService
 {
-    private readonly IApplicationDbContext _context;
-    private readonly IDataWarehouseDbContext _dwContext;
     private readonly ISurrealDbService _surreal;
 
-    public AccessRequestService(IApplicationDbContext context, IDataWarehouseDbContext dwContext, ISurrealDbService surreal)
+    public AccessRequestService(ISurrealDbService surreal)
     {
-        _context   = context;
-        _dwContext = dwContext;
-        _surreal   = surreal;
+        _surreal = surreal;
     }
+
+    // ── My Requests ───────────────────────────────────────────────────────────
 
     public async Task<List<MyRequestDto>> GetMyRequestsAsync(int userId)
     {
-        var requests = await _context.AccessRequests
-            .Include(r => r.Dataset)
-                .ThenInclude(d => d.OwnerGroup)
-                    .ThenInclude(g => g != null ? g.Owner : null)
-            .Include(r => r.ReviewedBy)
-            .Where(r => r.UserId == userId)
-            .OrderByDescending(r => r.CreatedAt)
-            .ToListAsync();
+        var requests = await _surreal.QueryAppDbAsync<SurrealMyRequest>($$"""
+            SELECT
+                record::id(id)                                                                                        AS id,
+                record::id(dataset_id)                                                                                AS dataset_id,
+                dataset_id.name                                                                                       AS dataset_name,
+                dataset_id.owner_group_id.owner_id.name                                                              AS owner_name,
+                dataset_id.owner_group_id.name                                                                        AS group_name,
+                IF dataset_id.owner_group_id IS NOT NONE THEN record::id(dataset_id.owner_group_id) ELSE NONE END    AS owner_group_id,
+                dataset_id.owner_group_id.owner_id.name                                                              AS group_owner_name,
+                status,
+                reviewed_by.name                                                                                      AS reviewer_name,
+                created_at
+            FROM access_requests
+            WHERE user_id = users:{{userId}}
+            ORDER BY created_at DESC;
+            """);
 
-        var globalApprovers = await _context.Users
-            .Where(u => u.Role == UserRole.Admin || u.Role == UserRole.IAO)
-            .Select(u => new DatasetApproverDto { Name = u.Name, RoleType = u.Role.ToString() })
-            .ToListAsync();
+        // Global approvers fetched once (only needed for pending requests)
+        List<DatasetApproverDto>? globalApprovers = null;
 
         var result = new List<MyRequestDto>();
 
@@ -45,97 +46,121 @@ public class AccessRequestService : IAccessRequestService
         {
             var dto = new MyRequestDto
             {
-                Id = req.Id,
-                DatasetId = req.DatasetId,
-                DatasetName = req.Dataset.Name,
-                OwnerName = req.Dataset.OwnerGroup?.Owner?.Name,
-                GroupName = req.Dataset.OwnerGroup?.Name,
-                Status = req.Status.ToString(),
-                ReviewerName = req.ReviewedBy?.Name,
-                CreatedAt = req.CreatedAt
+                Id           = req.Id,
+                DatasetId    = req.DatasetId,
+                DatasetName  = req.DatasetName,
+                OwnerName    = req.OwnerName,
+                GroupName    = req.GroupName,
+                Status       = req.Status,
+                ReviewerName = req.ReviewerName,
+                CreatedAt    = req.CreatedAt
             };
 
-            if (req.Status == RequestStatus.Pending)
+            if (req.Status == "Pending")
             {
+                globalApprovers ??= await _surreal.QueryAppDbAsync<DatasetApproverDto>(
+                    "SELECT name, role AS role_type FROM users WHERE role IN ['Admin', 'IAO'];");
+
                 dto.GlobalApprovers = globalApprovers;
-                
-                if (req.Dataset.OwnerGroup != null)
+
+                if (req.OwnerGroupId.HasValue)
                 {
-                    dto.PendingApprovers.Add(new DatasetApproverDto { Name = req.Dataset.OwnerGroup.Owner!.Name, RoleType = "Owner" });
-                    
-                    var members = await _context.VirtualGroupMembers
-                        .Include(vgm => vgm.User)
-                        .Where(vgm => vgm.GroupId == req.Dataset.OwnerGroupId)
-                        .Select(vgm => new DatasetApproverDto { Name = vgm.User.Name, RoleType = "Member" })
-                        .ToListAsync();
-                        
+                    if (!string.IsNullOrEmpty(req.GroupOwnerName))
+                        dto.PendingApprovers.Add(new DatasetApproverDto { Name = req.GroupOwnerName, RoleType = "Owner" });
+
+                    var members = await _surreal.QueryAppDbAsync<DatasetApproverDto>($$"""
+                        SELECT user_id.name AS name, 'Member' AS role_type
+                        FROM virtual_group_members
+                        WHERE group_id = virtual_groups:{{req.OwnerGroupId.Value}};
+                        """);
+
                     dto.PendingApprovers.AddRange(members);
-                    dto.PendingApprovers = dto.PendingApprovers.OrderBy(a => a.RoleType == "Owner" ? 0 : 1).ThenBy(a => a.Name).ToList();
+                    dto.PendingApprovers = dto.PendingApprovers
+                        .OrderBy(a => a.RoleType == "Owner" ? 0 : 1)
+                        .ThenBy(a => a.Name)
+                        .ToList();
                 }
             }
-            
+
             result.Add(dto);
         }
 
         return result;
     }
 
+    // ── Submit / Cancel ───────────────────────────────────────────────────────
+
     public async Task SubmitRequestAsync(int userId, SubmitRequestDto requestDto)
     {
-        var newRequest = new AccessRequest
-        {
-            UserId = userId,
-            DatasetId = requestDto.DatasetId,
-            Justification = requestDto.Justification,
-            PolicyGroupId = requestDto.PolicyGroupId,
-            Status = RequestStatus.Pending,
-            CreatedAt = DateTime.UtcNow
-        };
+        string policyRef = requestDto.PolicyGroupId.HasValue
+            ? $"asset_policy_groups:{requestDto.PolicyGroupId.Value}"
+            : "NONE";
 
-        _context.AccessRequests.Add(newRequest);
-        await _context.SaveChangesAsync();
+        await _surreal.ExecuteAppDbAsync($$"""
+            INSERT INTO access_requests {
+                user_id:         users:{{userId}},
+                dataset_id:      datasets:{{requestDto.DatasetId}},
+                justification:   "{{Esc(requestDto.Justification)}}",
+                policy_group_id: {{policyRef}},
+                status:          'Pending',
+                created_at:      time::now()
+            };
+            """);
     }
 
     public async Task CancelOrRemoveRequestAsync(int requestId, int userId)
     {
-        var request = await _context.AccessRequests
-            .FirstOrDefaultAsync(r => r.Id == requestId && r.UserId == userId);
-
-        if (request != null)
-        {
-            _context.AccessRequests.Remove(request);
-            await _context.SaveChangesAsync();
-        }
+        await _surreal.ExecuteAppDbAsync($$"""
+            DELETE access_requests
+            WHERE id = access_requests:{{requestId}} AND user_id = users:{{userId}};
+            """);
     }
+
+    // ── Process (Approve / Reject) ────────────────────────────────────────────
 
     public async Task ProcessRequestAsync(int requestId, int adminId, string action, int? policyGroupId)
     {
-        var request = await _context.AccessRequests
-            .Include(r => r.Dataset)
-            .Include(r => r.User)
-            .FirstOrDefaultAsync(r => r.Id == requestId);
+        // Load the request with user email and dataset name
+        var requests = await _surreal.QueryAppDbAsync<SurrealRequestFull>($$"""
+            SELECT
+                record::id(id)         AS id,
+                record::id(user_id)    AS user_id,
+                user_id.email          AS user_email,
+                record::id(dataset_id) AS dataset_id,
+                dataset_id.name        AS dataset_name
+            FROM access_requests WHERE id = access_requests:{{requestId}} LIMIT 1;
+            """);
 
-        if (request == null)
-            return;
+        var request = requests.FirstOrDefault();
+        if (request == null) return;
 
         if (action == "approve")
         {
-            request.Status = RequestStatus.Approved;
-            request.ReviewedById = adminId;
-            request.ReviewedAt = DateTime.UtcNow;
-            request.PolicyGroupId = policyGroupId;
+            string policyRef = policyGroupId.HasValue
+                ? $"asset_policy_groups:{policyGroupId.Value}"
+                : "NONE";
 
-            // Build RLS filter string from policy conditions (if a policy group was selected)
+            // Update status in AppDB
+            await _surreal.ExecuteAppDbAsync($$"""
+                UPDATE access_requests:{{requestId}} SET
+                    status          = 'Approved',
+                    reviewed_by     = users:{{adminId}},
+                    reviewed_at     = time::now(),
+                    policy_group_id = {{policyRef}};
+                """);
+
+            // Build RLS filter JSON from policy conditions
             string? rlsFilters = null;
             if (policyGroupId.HasValue)
             {
-                var conditions = await _context.AssetPolicyConditions
-                    .Where(c => c.PolicyGroupId == policyGroupId.Value)
-                    .ToListAsync();
+                var conditions = await _surreal.QueryAppDbAsync<SurrealCondition>($$"""
+                    SELECT column_name, value
+                    FROM asset_policy_conditions
+                    WHERE policy_group_id = asset_policy_groups:{{policyGroupId.Value}};
+                    """);
 
                 if (conditions.Any())
                 {
-                    // Serialise as {"ColumnName":"Value"} — matches the format stored on has_access edges
                     var pairs = conditions
                         .GroupBy(c => c.ColumnName)
                         .ToDictionary(g => g.Key, g => g.First().Value);
@@ -143,334 +168,423 @@ public class AccessRequestService : IAccessRequestService
                 }
             }
 
-            // 1. Create the has_access graph edge in SurrealDB
-            //    This is the source of truth for "who can access what" in the graph model.
+            // Create the has_access graph edge in AppDB
             await _surreal.GrantDatasetAccessAsync(
-                userId:         request.UserId,
-                datasetId:      request.DatasetId,
+                userId:          request.UserId,
+                datasetId:       request.DatasetId,
                 grantedByUserId: adminId,
-                rlsFilters:     rlsFilters,
-                policyGroupId:  policyGroupId);
+                rlsFilters:      rlsFilters,
+                policyGroupId:   policyGroupId);
 
-            // 2. Update PermissionsMap in SurrealDB DataWarehouse
-            //    This drives the row-level filtering enforced by SurrealDB PERMISSIONS on DW tables.
-            //    Remove existing entries for this user/dataset, then insert new ones.
-            var deleteExisting = $"""
+            // Sync PermissionsMap in DataWarehouse (root access, drives DW row-level security)
+            var deleteExisting = $$"""
                 DELETE PermissionsMap
-                WHERE UserID = "{request.User.Email}"
-                  AND TableName = "{request.Dataset.Name}";
+                WHERE UserID    = "{{Esc(request.UserEmail)}}"
+                  AND TableName = "{{Esc(request.DatasetName)}}";
                 """;
-            await _surreal.QueryAppDbAsync(deleteExisting); // runs as root against DW
+            await _surreal.ExecuteDwAsync(deleteExisting);
 
             if (string.IsNullOrEmpty(rlsFilters))
             {
                 // No filter — unrestricted access to all rows
-                var insertUnrestricted = $$"""
+                await _surreal.ExecuteDwAsync($$"""
                     INSERT INTO PermissionsMap {
-                        UserID:          "{{request.User.Email}}",
-                        TableName:       "{{request.Dataset.Name}}",
+                        UserID:          "{{Esc(request.UserEmail)}}",
+                        TableName:       "{{Esc(request.DatasetName)}}",
                         ColumnID:        NONE,
                         AuthorizedValue: NONE,
                         CreatedDate:     time::now()
                     };
-                    """;
-                await _surreal.QueryAppDbAsync(insertUnrestricted);
+                    """);
             }
             else
             {
-                // Insert one PermissionsMap row per condition column
-                var conditions = await _context.AssetPolicyConditions
-                    .Where(c => c.PolicyGroupId == policyGroupId!.Value)
-                    .ToListAsync();
+                // One PermissionsMap row per RLS condition
+                var conditions = await _surreal.QueryAppDbAsync<SurrealCondition>($$"""
+                    SELECT column_name, value
+                    FROM asset_policy_conditions
+                    WHERE policy_group_id = asset_policy_groups:{{policyGroupId!.Value}};
+                    """);
 
                 foreach (var condition in conditions)
                 {
-                    var insertFiltered = $$"""
+                    await _surreal.ExecuteDwAsync($$"""
                         INSERT INTO PermissionsMap {
-                            UserID:          "{{request.User.Email}}",
-                            TableName:       "{{request.Dataset.Name}}",
-                            ColumnID:        "{{condition.ColumnName}}",
-                            AuthorizedValue: "{{condition.Value}}",
+                            UserID:          "{{Esc(request.UserEmail)}}",
+                            TableName:       "{{Esc(request.DatasetName)}}",
+                            ColumnID:        "{{Esc(condition.ColumnName)}}",
+                            AuthorizedValue: "{{Esc(condition.Value)}}",
                             CreatedDate:     time::now()
                         };
-                        """;
-                    await _surreal.QueryAppDbAsync(insertFiltered);
+                        """);
                 }
             }
         }
         else if (action == "reject")
         {
-            request.Status = RequestStatus.Rejected;
-            request.ReviewedById = adminId;
-            request.ReviewedAt = DateTime.UtcNow;
+            await _surreal.ExecuteAppDbAsync($$"""
+                UPDATE access_requests:{{requestId}} SET
+                    status      = 'Rejected',
+                    reviewed_by = users:{{adminId}},
+                    reviewed_at = time::now();
+                """);
         }
-
-        await _context.SaveChangesAsync();
     }
+
+    // ── Manage Access Dashboard ───────────────────────────────────────────────
 
     public async Task<ManageAccessViewModel> GetManageAccessDashboardAsync(int userId, string role)
     {
         var vm = new ManageAccessViewModel();
 
-        // 1. My Datasets
-        var myDatasetsQuery = _context.Datasets
-            .Where(d => d.OwnerGroupId != null && _context.VirtualGroups.Any(vg => vg.Id == d.OwnerGroupId && vg.OwnerId == userId));
-            
-        var myDatasets = await myDatasetsQuery
-            .Select(d => new ManagedDatasetDto
-            {
-                Id = d.Id,
-                Name = d.Name,
-                Type = d.Type.ToString(),
-                Description = d.Description,
-                PolicyCount = _context.AssetPolicyGroups.Count(pg => pg.DatasetId == d.Id),
-                UserAccessCount = _context.AccessRequests.Where(ar => ar.DatasetId == d.Id && ar.Status == RequestStatus.Approved).Select(ar => ar.UserId).Distinct().Count(),
-                IsMissingFromDataWarehouse = false // We mock this for now, normally we'd query INFORMATION_SCHEMA via ADO.NET
-            })
-            .ToListAsync();
-            
-        vm.MyDatasets = myDatasets;
+        // 1. My Datasets (datasets whose owner group I own)
+        var myDatasets = await _surreal.QueryAppDbAsync<SurrealManagedDataset>($$"""
+            SELECT
+                record::id(id) AS id,
+                name,
+                type,
+                description,
+                array::len((SELECT id FROM asset_policy_groups WHERE dataset_id = $parent.id))                                                                  AS policy_count,
+                array::len(array::distinct((SELECT VALUE user_id FROM access_requests WHERE dataset_id = $parent.id AND status = 'Approved'))) AS user_access_count
+            FROM datasets
+            WHERE owner_group_id.owner_id = users:{{userId}}
+            ORDER BY name;
+            """);
 
-        // 2. Pending Requests
-        var pendingQuery = _context.AccessRequests
-            .Include(r => r.User)
-            .Include(r => r.Dataset)
-                .ThenInclude(d => d.OwnerGroup)
-                    .ThenInclude(g => g != null ? g.Owner : null)
-            .Include(r => r.Dataset)
-                .ThenInclude(d => d.PolicyGroups)
-            .Where(r => r.Status == RequestStatus.Pending);
-
-        // Apply restrictions for IAO
-        if (role == UserRole.IAO.ToString())
+        vm.MyDatasets = myDatasets.Select(d => new ManagedDatasetDto
         {
-            var myGroupIds = await _context.VirtualGroups
-                .Where(g => g.OwnerId == userId || _context.VirtualGroupMembers.Any(gm => gm.GroupId == g.Id && gm.UserId == userId))
-                .Select(g => g.Id)
-                .ToListAsync();
+            Id                        = d.Id,
+            Name                      = d.Name,
+            Type                      = d.Type,
+            Description               = d.Description ?? "",
+            PolicyCount               = d.PolicyCount,
+            UserAccessCount           = d.UserAccessCount,
+            IsMissingFromDataWarehouse = false
+        }).ToList();
 
-            pendingQuery = pendingQuery.Where(r => r.Dataset.OwnerGroupId != null && myGroupIds.Contains(r.Dataset.OwnerGroupId.Value));
+        // 2. Build IAO group filter (if applicable)
+        string roleFilter = "";
+        if (role == "IAO")
+        {
+            var myGroups = await _surreal.QueryAppDbAsync<SurrealId>($$"""
+                SELECT record::id(id) AS id FROM virtual_groups
+                WHERE owner_id = users:{{userId}}
+                   OR id IN (SELECT VALUE group_id FROM virtual_group_members WHERE user_id = users:{{userId}});
+                """);
+
+            if (!myGroups.Any()) return vm;   // No managed groups — nothing to show
+
+            var refs = string.Join(", ", myGroups.Select(g => $"virtual_groups:{g.Id}"));
+            roleFilter = $"AND dataset_id.owner_group_id IN [{refs}]";
         }
 
-        var pendingRequestsList = await pendingQuery
-            .OrderByDescending(r => r.CreatedAt)
-            .ToListAsync();
+        // 3. Pending Requests
+        var pendingRows = await _surreal.QueryAppDbAsync<SurrealPendingRequest>($$"""
+            SELECT
+                record::id(id)                                                                                       AS id,
+                record::id(dataset_id)                                                                               AS dataset_id,
+                user_id.name                                                                                         AS requestor_name,
+                dataset_id.name                                                                                      AS dataset_name,
+                created_at,
+                justification,
+                requested_rls_filters,
+                IF policy_group_id IS NOT NONE THEN record::id(policy_group_id) ELSE NONE END                       AS selected_policy_group_id,
+                IF dataset_id.owner_group_id IS NOT NONE THEN record::id(dataset_id.owner_group_id) ELSE NONE END   AS owner_group_id,
+                dataset_id.owner_group_id.owner_id.name                                                             AS group_owner_name
+            FROM access_requests
+            WHERE status = 'Pending' {{roleFilter}}
+            ORDER BY created_at DESC;
+            """);
 
-        foreach (var req in pendingRequestsList)
+        // Batch-fetch available policies for all unique datasets in pending list
+        var datasetIds = pendingRows.Select(p => p.DatasetId).Distinct().ToList();
+        var policiesByDataset = new Dictionary<int, List<PolicyGroupOptionDto>>();
+        if (datasetIds.Any())
+        {
+            var datasetRefs   = string.Join(", ", datasetIds.Select(id => $"datasets:{id}"));
+            var policyOptions = await _surreal.QueryAppDbAsync<SurrealPolicyOption>(
+                $"SELECT record::id(id) AS id, name, record::id(dataset_id) AS dataset_id FROM asset_policy_groups WHERE dataset_id IN [{datasetRefs}];");
+
+            policiesByDataset = policyOptions
+                .GroupBy(p => p.DatasetId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(p => new PolicyGroupOptionDto { Id = p.Id, Name = p.Name }).ToList());
+        }
+
+        foreach (var req in pendingRows)
         {
             var dto = new PendingRequestDto
             {
-                Id = req.Id,
-                DatasetId = req.DatasetId,
-                RequestorName = req.User.Name,
-                DatasetName = req.Dataset.Name,
-                CreatedAt = req.CreatedAt,
-                Justification = req.Justification,
-                RequestedFilters = req.RequestedRlsFilters,
-                SelectedPolicyGroupId = req.PolicyGroupId,
-                AvailablePolicies = req.Dataset.PolicyGroups.Select(pg => new PolicyGroupOptionDto { Id = pg.Id, Name = pg.Name }).ToList()
+                Id                    = req.Id,
+                DatasetId             = req.DatasetId,
+                RequestorName         = req.RequestorName,
+                DatasetName           = req.DatasetName,
+                CreatedAt             = req.CreatedAt,
+                Justification         = req.Justification ?? "",
+                RequestedFilters      = req.RequestedRlsFilters,
+                SelectedPolicyGroupId = req.SelectedPolicyGroupId,
+                AvailablePolicies     = policiesByDataset.GetValueOrDefault(req.DatasetId) ?? new()
             };
 
-            // Populate Approvers Group (similar to Details/MyRequests)
-            if (req.Dataset.OwnerGroup != null)
+            if (req.OwnerGroupId.HasValue)
             {
-                dto.GroupApprovers.Add(new DatasetApproverDto { Name = req.Dataset.OwnerGroup.Owner!.Name, RoleType = "Owner" });
-                
-                var members = await _context.VirtualGroupMembers
-                    .Include(vgm => vgm.User)
-                    .Where(vgm => vgm.GroupId == req.Dataset.OwnerGroupId)
-                    .Select(vgm => new DatasetApproverDto { Name = vgm.User.Name, RoleType = "Member" })
-                    .ToListAsync();
-                    
+                if (!string.IsNullOrEmpty(req.GroupOwnerName))
+                    dto.GroupApprovers.Add(new DatasetApproverDto { Name = req.GroupOwnerName, RoleType = "Owner" });
+
+                var members = await _surreal.QueryAppDbAsync<DatasetApproverDto>($$"""
+                    SELECT user_id.name AS name, 'Member' AS role_type
+                    FROM virtual_group_members
+                    WHERE group_id = virtual_groups:{{req.OwnerGroupId.Value}};
+                    """);
+
                 dto.GroupApprovers.AddRange(members);
-                dto.GroupApprovers = dto.GroupApprovers.OrderBy(a => a.RoleType == "Owner" ? 0 : 1).ThenBy(a => a.Name).ToList();
+                dto.GroupApprovers = dto.GroupApprovers
+                    .OrderBy(a => a.RoleType == "Owner" ? 0 : 1)
+                    .ThenBy(a => a.Name)
+                    .ToList();
             }
 
             vm.PendingRequests.Add(dto);
         }
 
-        // 3. History (Recent Decisions)
-        var historyQuery = _context.AccessRequests
-            .Include(r => r.User)
-            .Include(r => r.Dataset)
-            .Include(r => r.PolicyGroup)
-            .Where(r => r.Status != RequestStatus.Pending);
+        // 4. Recent Decisions (history)
+        vm.RecentDecisions = await _surreal.QueryAppDbAsync<RequestHistoryDto>($$"""
+            SELECT
+                reviewed_at                  AS reviewed_at,
+                user_id.name                 AS requestor_name,
+                dataset_id.name              AS dataset_name,
+                status,
+                policy_group_id.name         AS applied_policy_name
+            FROM access_requests
+            WHERE status != 'Pending' {{roleFilter}}
+            ORDER BY reviewed_at DESC
+            LIMIT 10;
+            """);
 
-        if (role == UserRole.IAO.ToString())
-        {
-             var myGroupIds = await _context.VirtualGroups
-                .Where(g => g.OwnerId == userId || _context.VirtualGroupMembers.Any(gm => gm.GroupId == g.Id && gm.UserId == userId))
-                .Select(g => g.Id)
-                .ToListAsync();
-
-            historyQuery = historyQuery.Where(r => r.Dataset.OwnerGroupId != null && myGroupIds.Contains(r.Dataset.OwnerGroupId.Value));
-        }
-
-        vm.RecentDecisions = await historyQuery
-            .OrderByDescending(r => r.ReviewedAt)
-            .Take(10)
-            .Select(r => new RequestHistoryDto
-            {
-                ReviewedAt = r.ReviewedAt ?? DateTime.UtcNow,
-                RequestorName = r.User.Name,
-                DatasetName = r.Dataset.Name,
-                Status = r.Status.ToString(),
-                AppliedPolicyName = r.PolicyGroup != null ? r.PolicyGroup.Name : null
-            })
-            .ToListAsync();
+        // Fallback: if reviewed_at is default (NONE), substitute UtcNow
+        foreach (var d in vm.RecentDecisions.Where(d => d.ReviewedAt == default))
+            d.ReviewedAt = DateTime.UtcNow;
 
         return vm;
     }
 
-    // --- Policy Management ---
+    // ── Policy Management ─────────────────────────────────────────────────────
 
     public async Task<ManagePolicyViewModel?> GetManagePolicyViewModelAsync(int datasetId, int currentUserId, string role)
     {
-        var dataset = await _context.Datasets
-            .Include(d => d.Columns)
-            .Include(d => d.OwnerGroup)
-            .FirstOrDefaultAsync(d => d.Id == datasetId);
+        // Dataset header + security check
+        var datasets = await _surreal.QueryAppDbAsync<SurrealDatasetHeader>($$"""
+            SELECT
+                record::id(id)                                                                               AS id,
+                name,
+                IF owner_group_id IS NOT NONE THEN record::id(owner_group_id) ELSE NONE END                 AS owner_group_id,
+                IF owner_group_id.owner_id IS NOT NONE THEN record::id(owner_group_id.owner_id) ELSE NONE END AS group_owner_id
+            FROM datasets WHERE id = datasets:{{datasetId}} LIMIT 1;
+            """);
 
+        var dataset = datasets.FirstOrDefault();
         if (dataset == null) return null;
 
-        // Security check
         bool canManage = role == "Admin";
         if (!canManage && dataset.OwnerGroupId.HasValue)
         {
-            var isOwnerOrMember = await _context.VirtualGroups
-                .Where(g => g.Id == dataset.OwnerGroupId.Value)
-                .AnyAsync(g => g.OwnerId == currentUserId || g.Members.Any(m => m.UserId == currentUserId));
-            canManage = isOwnerOrMember;
+            if (dataset.GroupOwnerId == currentUserId)
+            {
+                canManage = true;
+            }
+            else
+            {
+                var membership = await _surreal.QueryAppDbAsync<SurrealCount>($$"""
+                    SELECT count() AS count
+                    FROM virtual_group_members
+                    WHERE group_id = virtual_groups:{{dataset.OwnerGroupId.Value}} AND user_id = users:{{currentUserId}}
+                    GROUP ALL;
+                    """);
+                canManage = (membership.FirstOrDefault()?.Count ?? 0) > 0;
+            }
         }
 
         if (!canManage) return null;
 
         var vm = new ManagePolicyViewModel
         {
-            DatasetId = dataset.Id,
-            DatasetName = dataset.Name,
-            DatasetColumns = dataset.Columns.Select(c => new DatasetColumnDto
-            {
-                Id = c.Id,
-                Name = c.Name,
-                DataType = c.DataType,
-                Definition = c.Definition,
-                IsPii = c.IsPii,
-                SampleData = c.SampleData
-            }).ToList()
+            DatasetId   = dataset.Id,
+            DatasetName = dataset.Name
         };
 
-        // Available Owners (IAO / Admin)
-        vm.AvailableOwners = await _context.Users
-            .Where(u => u.Role == UserRole.Admin || u.Role == UserRole.IAO)
-            .Select(u => new UserDto { Id = u.Id, Name = u.Name })
-            .ToListAsync();
+        // Columns
+        vm.DatasetColumns = await _surreal.QueryAppDbAsync<DatasetColumnDto>($$"""
+            SELECT record::id(id) AS id, name, data_type, definition, is_pii, sample_data
+            FROM columns WHERE dataset_id = datasets:{{datasetId}};
+            """);
 
-        var policyGroups = await _context.AssetPolicyGroups
-            .Include(g => g.Owner)
-            .Include(g => g.Conditions)
-            .Include(g => g.HiddenColumns)
-            .Where(g => g.DatasetId == datasetId)
-            .ToListAsync();
+        // Available owners (IAO / Admin)
+        vm.AvailableOwners = await _surreal.QueryAppDbAsync<UserDto>(
+            "SELECT record::id(id) AS id, name FROM users WHERE role IN ['Admin', 'IAO'] AND type::is_int(record::id(id));");
 
-        foreach (var pg in policyGroups)
-        {
-            var pgDto = new PolicyGroupDetailDto
-            {
-                Id = pg.Id,
-                Name = pg.Name,
-                Description = pg.Description,
-                OwnerName = pg.Owner?.Name ?? "Unassigned"
-            };
+        // Policy groups with conditions, hidden columns, authorized users (single query)
+        vm.PolicyGroups = await _surreal.QueryAppDbAsync<PolicyGroupDetailDto>($$"""
+            SELECT
+                record::id(id)  AS id,
+                name,
+                description,
+                owner_id.name   AS owner_name,
+                (SELECT record::id(id) AS id, column_name, operator, value
+                 FROM asset_policy_conditions
+                 WHERE policy_group_id = $parent.id)           AS conditions,
+                (SELECT column_name, is_hidden
+                 FROM asset_policy_columns
+                 WHERE policy_group_id = $parent.id)           AS columns,
+                (SELECT user_id.name AS name, user_id.email AS email, reviewed_at
+                 FROM access_requests
+                 WHERE policy_group_id = $parent.id AND status = 'Approved') AS authorized_users
+            FROM asset_policy_groups WHERE dataset_id = datasets:{{datasetId}};
+            """);
 
-            pgDto.Conditions = pg.Conditions.Select(c => new PolicyConditionDto
-            {
-                Id = c.Id,
-                ColumnName = c.ColumnName,
-                Operator = c.Operator,
-                Value = c.Value
-            }).ToList();
-
-            pgDto.Columns = pg.HiddenColumns.Select(hc => new PolicyColumnDto
-            {
-                ColumnName = hc.ColumnName,
-                IsHidden = hc.IsHidden
-            }).ToList();
-
-            // Authorized Users (Status = Approved)
-            var users = await _context.AccessRequests
-                .Include(r => r.User)
-                .Where(r => r.PolicyGroupId == pg.Id && r.Status == RequestStatus.Approved)
-                .Select(r => new PolicyUserDto
-                {
-                    Name = r.User.Name,
-                    Email = r.User.Email,
-                    ReviewedAt = r.ReviewedAt
-                })
-                .ToListAsync();
-
-            pgDto.AuthorizedUsers = users;
-
-            vm.PolicyGroups.Add(pgDto);
-        }
+        // Fill in "Unassigned" for any null owner names
+        foreach (var pg in vm.PolicyGroups)
+            pg.OwnerName ??= "Unassigned";
 
         return vm;
     }
 
     public async Task CreatePolicyGroupAsync(int datasetId, string name, string description, int? ownerId)
     {
-        var group = new AssetPolicyGroup
-        {
-            DatasetId = datasetId,
-            Name = name,
-            Description = description,
-            OwnerId = ownerId
-        };
-        _context.AssetPolicyGroups.Add(group);
-        await _context.SaveChangesAsync();
+        string ownerRef = ownerId.HasValue ? $"users:{ownerId.Value}" : "NONE";
+
+        await _surreal.ExecuteAppDbAsync($$"""
+            INSERT INTO asset_policy_groups {
+                dataset_id:  datasets:{{datasetId}},
+                name:        "{{Esc(name)}}",
+                description: "{{Esc(description)}}",
+                owner_id:    {{ownerRef}},
+                created_at:  time::now()
+            };
+            """);
     }
 
     public async Task AddPolicyConditionAsync(int policyGroupId, string columnName, string op, string value)
     {
-        var condition = new AssetPolicyCondition
-        {
-            PolicyGroupId = policyGroupId,
-            ColumnName = columnName,
-            Operator = op,
-            Value = value
-        };
-        _context.AssetPolicyConditions.Add(condition);
-        await _context.SaveChangesAsync();
+        await _surreal.ExecuteAppDbAsync($$"""
+            INSERT INTO asset_policy_conditions {
+                policy_group_id: asset_policy_groups:{{policyGroupId}},
+                column_name:     "{{Esc(columnName)}}",
+                operator:        "{{Esc(op)}}",
+                value:           "{{Esc(value)}}"
+            };
+            """);
     }
 
     public async Task DeletePolicyConditionAsync(int conditionId)
     {
-        var condition = await _context.AssetPolicyConditions.FindAsync(conditionId);
-        if (condition != null)
-        {
-            _context.AssetPolicyConditions.Remove(condition);
-            await _context.SaveChangesAsync();
-        }
+        await _surreal.ExecuteAppDbAsync(
+            $"DELETE asset_policy_conditions WHERE id = asset_policy_conditions:{conditionId};");
     }
 
     public async Task TogglePolicyColumnVisibilityAsync(int policyGroupId, string columnName, bool isVisible)
     {
-        var existing = await _context.AssetPolicyColumns
-            .FirstOrDefaultAsync(c => c.PolicyGroupId == policyGroupId && c.ColumnName == columnName);
+        string hiddenVal = isVisible ? "false" : "true";
 
-        if (existing != null)
+        var existing = await _surreal.QueryAppDbAsync<SurrealId>($$"""
+            SELECT record::id(id) AS id
+            FROM asset_policy_columns
+            WHERE policy_group_id = asset_policy_groups:{{policyGroupId}}
+              AND column_name = "{{Esc(columnName)}}"
+            LIMIT 1;
+            """);
+
+        if (existing.Any())
         {
-            existing.IsHidden = !isVisible; // If passed true for isVisible, IsHidden = false
+            await _surreal.ExecuteAppDbAsync($$"""
+                UPDATE asset_policy_columns:{{existing[0].Id}} SET is_hidden = {{hiddenVal}};
+                """);
         }
         else
         {
-            _context.AssetPolicyColumns.Add(new AssetPolicyColumn
-            {
-                PolicyGroupId = policyGroupId,
-                ColumnName = columnName,
-                IsHidden = !isVisible
-            });
+            await _surreal.ExecuteAppDbAsync($$"""
+                INSERT INTO asset_policy_columns {
+                    policy_group_id: asset_policy_groups:{{policyGroupId}},
+                    column_name:     "{{Esc(columnName)}}",
+                    is_hidden:       {{hiddenVal}}
+                };
+                """);
         }
-        await _context.SaveChangesAsync();
     }
+
+    // ── SurrealDB response models ─────────────────────────────────────────────
+
+    private class SurrealMyRequest
+    {
+        public int      Id             { get; set; }
+        public int      DatasetId      { get; set; }
+        public string   DatasetName    { get; set; } = "";
+        public string?  OwnerName      { get; set; }
+        public string?  GroupName      { get; set; }
+        public int?     OwnerGroupId   { get; set; }
+        public string?  GroupOwnerName { get; set; }
+        public string   Status         { get; set; } = "";
+        public string?  ReviewerName   { get; set; }
+        public DateTime CreatedAt      { get; set; }
+    }
+
+    private class SurrealRequestFull
+    {
+        public int    Id          { get; set; }
+        public int    UserId      { get; set; }
+        public string UserEmail   { get; set; } = "";
+        public int    DatasetId   { get; set; }
+        public string DatasetName { get; set; } = "";
+    }
+
+    private class SurrealCondition
+    {
+        public string ColumnName { get; set; } = "";
+        public string Value      { get; set; } = "";
+    }
+
+    private class SurrealManagedDataset
+    {
+        public int    Id              { get; set; }
+        public string Name            { get; set; } = "";
+        public string Type            { get; set; } = "";
+        public string? Description    { get; set; }
+        public int    PolicyCount     { get; set; }
+        public int    UserAccessCount { get; set; }
+    }
+
+    private class SurrealPendingRequest
+    {
+        public int      Id                    { get; set; }
+        public int      DatasetId             { get; set; }
+        public string   RequestorName         { get; set; } = "";
+        public string   DatasetName           { get; set; } = "";
+        public DateTime CreatedAt             { get; set; }
+        public string?  Justification         { get; set; }
+        public string?  RequestedRlsFilters   { get; set; }
+        public int?     SelectedPolicyGroupId { get; set; }
+        public int?     OwnerGroupId          { get; set; }
+        public string?  GroupOwnerName        { get; set; }
+    }
+
+    private class SurrealPolicyOption
+    {
+        public int    Id        { get; set; }
+        public string Name      { get; set; } = "";
+        public int    DatasetId { get; set; }
+    }
+
+    private class SurrealDatasetHeader
+    {
+        public int    Id           { get; set; }
+        public string Name         { get; set; } = "";
+        public int?   OwnerGroupId { get; set; }
+        public int?   GroupOwnerId { get; set; }
+    }
+
+    private class SurrealId    { public int Id    { get; set; } }
+    private class SurrealCount { public int Count { get; set; } }
+
+    private static string Esc(string? s) =>
+        (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"");
 }

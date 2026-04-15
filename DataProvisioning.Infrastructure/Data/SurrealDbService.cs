@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using DataProvisioning.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -22,24 +23,32 @@ public class SurrealDbService : ISurrealDbService
     private readonly string _rootUser;
     private readonly string _rootPass;
 
+    // Shared options: case-insensitive property matching + snake_case name policy
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy        = JsonNamingPolicy.SnakeCaseLower,
+        NumberHandling              = JsonNumberHandling.AllowReadingFromString,
+        DefaultIgnoreCondition      = JsonIgnoreCondition.Never
+    };
+
     public SurrealDbService(HttpClient http, IConfiguration config, ILogger<SurrealDbService> logger)
     {
         _http    = http;
         _logger  = logger;
 
-        var section   = config.GetSection("SurrealDb");
-        _namespace    = section["Namespace"] ?? "Data Provisioning Engine";
-        _appDb        = section["AppDb"]     ?? "AppDB";
-        _dwDb         = section["DwDb"]      ?? "DataWarehouse";
-        _rootUser     = section["Username"]  ?? "root";
-        _rootPass     = section["Password"]  ?? "root";
+        var section = config.GetSection("SurrealDb");
+        _namespace  = section["Namespace"] ?? "Data Provisioning Engine";
+        _appDb      = section["AppDb"]     ?? "AppDB";
+        _dwDb       = section["DwDb"]      ?? "DataWarehouse";
+        _rootUser   = section["Username"]  ?? "root";
+        _rootPass   = section["Password"]  ?? "root";
     }
 
     // ──────────────────────────────────────────────────────────────────────────
     // AUTH
     // ──────────────────────────────────────────────────────────────────────────
 
-    /// <inheritdoc/>
     public async Task<string?> SignInAsync(string email)
     {
         var body = JsonSerializer.Serialize(new
@@ -56,33 +65,42 @@ public class SurrealDbService : ISurrealDbService
         };
 
         var response = await _http.SendAsync(request);
-
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogWarning("SurrealDB signin failed for {Email}: {Status}", email, response.StatusCode);
             return null;
         }
 
-        // SurrealDB returns: { "token": "eyJ..." }
         var json = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(json);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            _logger.LogWarning("SurrealDB signin returned empty body for {Email}", email);
+            return null;
+        }
 
-        if (doc.RootElement.TryGetProperty("token", out var tokenEl))
-            return tokenEl.GetString();
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("token", out var tokenEl))
+                return tokenEl.GetString();
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "SurrealDB signin response was not valid JSON for {Email}", email);
+            return null;
+        }
 
         _logger.LogWarning("SurrealDB signin response had no token for {Email}", email);
         return null;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // GRAPH QUERIES
+    // GRAPH OPERATIONS
     // ──────────────────────────────────────────────────────────────────────────
 
-    /// <inheritdoc/>
     public async Task<IEnumerable<int>> GetAccessibleDatasetIdsAsync(int userId)
     {
-        // Graph traversal: follow has_access edges from the user node to dataset nodes
-        var surql = $"SELECT ->has_access->datasets.id AS ids FROM users:{userId};";
+        var surql  = $"SELECT ->has_access->datasets.id AS ids FROM users:{userId};";
         var result = await ExecuteSqlAsync(surql, _namespace, _appDb, useRootAuth: true);
 
         try
@@ -90,8 +108,8 @@ public class SurrealDbService : ISurrealDbService
             using var doc = JsonDocument.Parse(result);
             var root = doc.RootElement;
 
-            // Response shape: [ { "status": "OK", "result": [ { "ids": ["datasets:14", ...] } ] } ]
             if (root.ValueKind == JsonValueKind.Array &&
+                root.GetArrayLength() > 0 &&
                 root[0].TryGetProperty("result", out var rows) &&
                 rows.ValueKind == JsonValueKind.Array &&
                 rows.GetArrayLength() > 0 &&
@@ -101,8 +119,7 @@ public class SurrealDbService : ISurrealDbService
                 var datasetIds = new List<int>();
                 foreach (var item in ids.EnumerateArray())
                 {
-                    // SurrealDB returns record IDs like "datasets:14" — extract the numeric part
-                    var raw = item.GetString() ?? "";
+                    var raw   = item.GetString() ?? "";
                     var colon = raw.IndexOf(':');
                     if (colon >= 0 && int.TryParse(raw[(colon + 1)..], out var id))
                         datasetIds.Add(id);
@@ -115,10 +132,9 @@ public class SurrealDbService : ISurrealDbService
             _logger.LogError(ex, "Failed to parse GetAccessibleDatasetIds response");
         }
 
-        return Enumerable.Empty<int>();
+        return [];
     }
 
-    /// <inheritdoc/>
     public async Task GrantDatasetAccessAsync(int userId, int datasetId, int grantedByUserId, string? rlsFilters, int? policyGroupId)
     {
         var parts = new List<string>
@@ -137,13 +153,12 @@ public class SurrealDbService : ISurrealDbService
             parts.Add($"policy_group_id = asset_policy_groups:{policyGroupId.Value}");
 
         var setClause = string.Join(", ", parts);
-        var surql = $"RELATE users:{userId}->has_access->datasets:{datasetId} SET {setClause};";
+        var surql     = $"RELATE users:{userId}->has_access->datasets:{datasetId} SET {setClause};";
 
         await ExecuteSqlAsync(surql, _namespace, _appDb, useRootAuth: true);
         _logger.LogInformation("Granted SurrealDB has_access: users:{UserId} -> datasets:{DatasetId}", userId, datasetId);
     }
 
-    /// <inheritdoc/>
     public async Task RevokeDatasetAccessAsync(int userId, int datasetId)
     {
         var surql = $"DELETE has_access WHERE in = users:{userId} AND out = datasets:{datasetId};";
@@ -152,16 +167,66 @@ public class SurrealDbService : ISurrealDbService
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // RAW QUERIES
+    // TYPED QUERIES
     // ──────────────────────────────────────────────────────────────────────────
 
-    /// <inheritdoc/>
+    public async Task<List<T>> QueryAppDbAsync<T>(string surql)
+    {
+        var raw = await ExecuteSqlAsync(surql, _namespace, _appDb, useRootAuth: true);
+        return ParseFirstResult<T>(raw);
+    }
+
     public Task<string> QueryAppDbAsync(string surql)
         => ExecuteSqlAsync(surql, _namespace, _appDb, useRootAuth: true);
 
-    /// <inheritdoc/>
+    public Task ExecuteAppDbAsync(string surql)
+        => ExecuteSqlAsync(surql, _namespace, _appDb, useRootAuth: true);
+
+    public Task ExecuteDwAsync(string surql)
+        => ExecuteSqlAsync(surql, _namespace, _dwDb, useRootAuth: true);
+
     public Task<string> QueryDataWarehouseAsync(string surql, string userJwt)
         => ExecuteSqlAsync(surql, _namespace, _dwDb, jwt: userJwt);
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // JSON HELPERS
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses a SurrealDB /sql response and deserialises the first result-set.
+    /// Response shape: [{ "status": "OK", "result": [...] }]
+    /// </summary>
+    private static List<T> ParseFirstResult<T>(string raw)
+    {
+        try
+        {
+            using var doc  = JsonDocument.Parse(raw);
+            var root       = doc.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() == 0)
+                return [];
+
+            var first = root[0];
+            if (!first.TryGetProperty("result", out var result))
+                return [];
+
+            // "result" is an array for SELECT, a single object for FROM ONLY
+            if (result.ValueKind == JsonValueKind.Array)
+                return JsonSerializer.Deserialize<List<T>>(result.GetRawText(), _jsonOptions) ?? [];
+
+            if (result.ValueKind == JsonValueKind.Object)
+            {
+                var single = JsonSerializer.Deserialize<T>(result.GetRawText(), _jsonOptions);
+                return single is null ? [] : [single];
+            }
+        }
+        catch (Exception)
+        {
+            // Swallow parse errors — return empty
+        }
+
+        return [];
+    }
 
     // ──────────────────────────────────────────────────────────────────────────
     // INTERNAL HTTP HELPER

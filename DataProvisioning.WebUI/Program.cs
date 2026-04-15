@@ -1,27 +1,17 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Negotiate;
-using Microsoft.EntityFrameworkCore;
-using DataProvisioning.Infrastructure.Data;
 using DataProvisioning.Application.Interfaces;
+using DataProvisioning.Infrastructure.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-builder.Services.AddDbContext<DataWarehouseDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DataWarehouseConnection")));
-
-builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
-builder.Services.AddScoped<IDataWarehouseDbContext>(provider => provider.GetRequiredService<DataWarehouseDbContext>());
-builder.Services.AddScoped<ICatalogService, DataProvisioning.Application.Services.CatalogService>();
+// ── Application Services ───────────────────────────────────────────────────
+builder.Services.AddScoped<ICatalogService,        DataProvisioning.Application.Services.CatalogService>();
 builder.Services.AddScoped<IDatasetDetailsService, DataProvisioning.Application.Services.DatasetDetailsService>();
-builder.Services.AddScoped<IAccessRequestService, DataProvisioning.Application.Services.AccessRequestService>();
+builder.Services.AddScoped<IAccessRequestService,  DataProvisioning.Application.Services.AccessRequestService>();
 builder.Services.AddScoped<IAdministrationService, DataProvisioning.Application.Services.AdministrationService>();
 
-// SurrealDB — registered as a singleton HttpClient-backed service.
-// The HttpClient base address is read from appsettings.json "SurrealDb:Endpoint".
+// ── SurrealDB — typed HttpClient backed service ────────────────────────────
 builder.Services.AddHttpClient<ISurrealDbService, SurrealDbService>(client =>
 {
     var endpoint = builder.Configuration["SurrealDb:Endpoint"] ?? "http://localhost:8000";
