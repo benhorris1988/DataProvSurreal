@@ -2,8 +2,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using DataProvisioning.Application.Interfaces;
-using DataProvisioning.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
 
 namespace DataProvisioning.WebUI.Controllers;
 
@@ -11,12 +9,10 @@ namespace DataProvisioning.WebUI.Controllers;
 public class RequestsController : Controller
 {
     private readonly IAccessRequestService _requestService;
-    private readonly IApplicationDbContext _context;
 
-    public RequestsController(IAccessRequestService requestService, IApplicationDbContext context)
+    public RequestsController(IAccessRequestService requestService)
     {
         _requestService = requestService;
-        _context = context;
     }
 
     [HttpGet]

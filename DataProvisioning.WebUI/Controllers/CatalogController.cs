@@ -2,8 +2,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
 using DataProvisioning.Application.Interfaces;
-using DataProvisioning.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
 
 namespace DataProvisioning.WebUI.Controllers;
 
@@ -11,12 +9,10 @@ namespace DataProvisioning.WebUI.Controllers;
 public class CatalogController : Controller
 {
     private readonly ICatalogService _catalogService;
-    private readonly ApplicationDbContext _context;
 
-    public CatalogController(ICatalogService catalogService, ApplicationDbContext context)
+    public CatalogController(ICatalogService catalogService)
     {
         _catalogService = catalogService;
-        _context = context;
     }
 
     public async Task<IActionResult> Index(string? q)

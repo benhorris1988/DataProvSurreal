@@ -1,21 +1,22 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Negotiate;
-using SurrealDb.Net;
+using DataProvisioning.Application.Interfaces;
 using DataProvisioning.Infrastructure.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-var surrealEndpoint = builder.Configuration.GetSection("SurrealDb").GetValue<string>("Endpoint");
-if (!string.IsNullOrEmpty(surrealEndpoint))
-{
-    builder.Services.AddSurreal(surrealEndpoint);
-}
+// ── Application Services ───────────────────────────────────────────────────
+builder.Services.AddScoped<ICatalogService,        DataProvisioning.Application.Services.CatalogService>();
+builder.Services.AddScoped<IDatasetDetailsService, DataProvisioning.Application.Services.DatasetDetailsService>();
+builder.Services.AddScoped<IAccessRequestService,  DataProvisioning.Application.Services.AccessRequestService>();
+builder.Services.AddScoped<IAdministrationService, DataProvisioning.Application.Services.AdministrationService>();
 
-builder.Services.AddScoped<DataProvisioning.Application.Interfaces.ICatalogService, DataProvisioning.Application.Services.CatalogService>();
-builder.Services.AddScoped<DataProvisioning.Application.Interfaces.IDatasetDetailsService, DataProvisioning.Application.Services.DatasetDetailsService>();
-builder.Services.AddScoped<DataProvisioning.Application.Interfaces.IAccessRequestService, DataProvisioning.Application.Services.AccessRequestService>();
-builder.Services.AddScoped<DataProvisioning.Application.Interfaces.IAdministrationService, DataProvisioning.Application.Services.AdministrationService>();
+// ── SurrealDB — typed HttpClient backed service ────────────────────────────
+builder.Services.AddHttpClient<ISurrealDbService, SurrealDbService>(client =>
+{
+    var endpoint = builder.Configuration["SurrealDb:Endpoint"] ?? "http://localhost:8000";
+    client.BaseAddress = new Uri(endpoint);
+});
 
 var testMode = builder.Configuration.GetValue<bool>("TestMode");
 

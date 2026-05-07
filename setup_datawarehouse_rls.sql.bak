@@ -1,0 +1,108 @@
+-- Connect to the Data Warehouse Database
+USE datawarehouse_DEV;
+GO
+
+-- 1. Create necessary Schemas
+IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = 'AppAdmin')
+BEGIN
+    EXEC('CREATE SCHEMA [AppAdmin]');
+END
+GO
+
+IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = 'Security')
+BEGIN
+    EXEC('CREATE SCHEMA [Security]');
+END
+GO
+
+-- 2. Create the Permissions Map Table (This holds the RLS rules)
+IF OBJECT_ID('AppAdmin.PermissionsMap', 'U') IS NULL
+BEGIN
+    CREATE TABLE AppAdmin.PermissionsMap (
+        ID INT IDENTITY(1,1) PRIMARY KEY,
+        UserID NVARCHAR(100) NOT NULL,      -- The specific web user (e.g., 'UserA')
+        TableName NVARCHAR(128) NOT NULL,   -- The table being secured
+        ColumnID NVARCHAR(128) NOT NULL,    -- The column to filter on (e.g., 'Sector')
+        AuthorizedValue NVARCHAR(MAX) NOT NULL, -- The value they are allowed to see (e.g., 'Marine')
+        CreatedDate DATETIME DEFAULT GETDATE()
+    );
+
+    -- Index for performance
+    CREATE INDEX IX_PermissionsMap_UserTable ON AppAdmin.PermissionsMap(UserID, TableName);
+END
+GO
+
+-- 3. Create the Security Predicate Function
+-- Updated to support Sector, CostCenter, and Region
+CREATE OR ALTER FUNCTION Security.fn_DynamicPredicate(
+    @Val1 SQL_VARIANT, -- Sector
+    @Val2 SQL_VARIANT, -- CostCenter
+    @Val3 SQL_VARIANT, -- Region
+    @TableName sysname
+)
+RETURNS TABLE
+WITH SCHEMABINDING
+AS
+RETURN SELECT 1 AS result
+WHERE EXISTS (
+    SELECT 1 
+    FROM AppAdmin.PermissionsMap 
+    WHERE UserID = CAST(SESSION_CONTEXT(N'UserId') AS NVARCHAR(100)) 
+      AND TableName = @TableName
+      AND (
+          (ColumnID = 'Sector' AND AuthorizedValue = CAST(@Val1 AS NVARCHAR(MAX)))
+          OR 
+          (ColumnID = 'CostCenter' AND AuthorizedValue = CAST(@Val2 AS NVARCHAR(MAX)))
+          OR
+          (ColumnID = 'Region' AND AuthorizedValue = CAST(@Val3 AS NVARCHAR(MAX)))
+          OR
+          (AuthorizedValue = 'ALL')
+      )
+);
+GO
+
+-- 4. Apply Security Policies to Tables
+-- (Self-Healing: Create dummy FactSales if not exists)
+IF OBJECT_ID('dbo.FactSales', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.FactSales (
+        TransactionID INT PRIMARY KEY,
+        Sector NVARCHAR(50),
+        CostCenter NVARCHAR(50),
+        Region NVARCHAR(50),
+        Amount DECIMAL(18,2),
+        [Date] DATETIME
+    );
+     INSERT INTO dbo.FactSales (TransactionID, Sector, CostCenter, Region, Amount) VALUES 
+    (1, 'Marine', 'CC100', 'North', 1000.00),
+    (2, 'Aviation', 'CC200', 'South', 5000.00),
+    (3, 'Marine', 'CC105', 'North', 1500.00),
+    (4, 'Land', 'CC300', 'East', 2000.00);
+END
+GO
+
+-- Drop existing policy
+IF EXISTS (SELECT * FROM sys.security_policies WHERE name = 'rls_FactSales')
+BEGIN
+    DROP SECURITY POLICY Security.rls_FactSales;
+END
+GO
+
+-- Create Security Policy
+-- Mapping: Sector->@Val1, CostCenter->@Val2, Region->@Val3
+CREATE SECURITY POLICY Security.rls_FactSales
+ADD FILTER PREDICATE Security.fn_DynamicPredicate(Sector, CostCenter, Region, 'FactSales') 
+ON dbo.FactSales
+WITH (STATE = ON);
+GO
+
+
+
+-- 5. Apply Dynamic Data Masking (DDM)
+-- Mask 'Amount' column in FactSales. 
+-- NOTE: As discussed, DDM applies to the Database User. Since the web app uses one DB user ('dmp'), 
+-- everyone sees the mask unless 'dmp' has UNMASK. 
+-- However, we will apply it as requested. 
+ALTER TABLE dbo.FactSales 
+ALTER COLUMN Amount ADD MASKED WITH (FUNCTION = 'default()');
+GO

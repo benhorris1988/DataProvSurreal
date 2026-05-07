@@ -2,8 +2,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using DataProvisioning.Application.Interfaces;
 using DataProvisioning.Application.DTOs;
-using DataProvisioning.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
 
 namespace DataProvisioning.WebUI.Controllers;
 
@@ -12,13 +10,11 @@ public class DatasetController : Controller
 {
     private readonly IDatasetDetailsService _datasetService;
     private readonly IAccessRequestService _requestService;
-    private readonly IApplicationDbContext _context;
 
-    public DatasetController(IDatasetDetailsService datasetService, IAccessRequestService requestService, IApplicationDbContext context)
+    public DatasetController(IDatasetDetailsService datasetService, IAccessRequestService requestService)
     {
         _datasetService = datasetService;
         _requestService = requestService;
-        _context = context;
     }
 
     [HttpGet("Dataset/Details/{id}")]
